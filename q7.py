@@ -2,6 +2,7 @@ import os
 import pandas as pd
 from alpaca_trade_api.rest import REST, TimeFrame
 from dotenv import load_dotenv
+from datetime import date, timedelta # Added for date manipulation
 
 # ===========================================================================================
 # 第一部分：策略实施与回测（Python 重点）
@@ -52,6 +53,41 @@ from dotenv import load_dotenv
 #     *   [ ] 比较趋势跟踪和均值回归策略的性能。
 #     *   [ ] 基于回测结果或理论推理，讨论市场状况（波动性、跳跃）对每种策略性能的潜在影响。
 
+# --- Helper Function to find the nearest previous trading day ---
+def get_last_trading_day(api_instance, target_date_str):
+    """
+    Finds the trading day on or immediately preceding the target date.
+
+    Args:
+        api_instance (REST): Initialized Alpaca API client.
+        target_date_str (str): The target date in 'YYYY-MM-DD' format.
+
+    Returns:
+        str: The date string of the actual trading day in 'YYYY-MM-DD' format, or None if an error occurs.
+    """
+    target_dt = date.fromisoformat(target_date_str)
+    # Check a window around the target date for the calendar
+    calendar_start = (target_dt - timedelta(days=10)).strftime('%Y-%m-%d')
+    calendar_end = target_dt.strftime('%Y-%m-%d')
+
+    try:
+        calendar = api_instance.get_calendar(start=calendar_start, end=calendar_end)
+        trading_days = {cal.date.date() for cal in calendar} # Use .date() to get date object
+
+        current_dt = target_dt
+        while current_dt >= date.fromisoformat(calendar_start):
+            if current_dt in trading_days:
+                print(f"目标日期 {target_date_str} 的交易日确定为: {current_dt.strftime('%Y-%m-%d')}")
+                return current_dt.strftime('%Y-%m-%d')
+            current_dt -= timedelta(days=1)
+
+        print(f"错误：在 {calendar_start} 和 {target_date_str} 之间找不到交易日。")
+        return None
+    except Exception as e:
+        print(f"获取交易日历时出错: {e}")
+        return None
+
+
 # 从 .env 文件加载环境变量
 load_dotenv()
 
@@ -97,72 +133,70 @@ def fetch_historical_data(symbol, timeframe, start_date, end_date):
 # --- 使用示例 ---
 # 定义参数
 ticker = 'SPY' # 标普 500 ETF
-# 选择时间范围（例如，15 分钟）
-# 选项：TimeFrame.Minute, TimeFrame.Hour, TimeFrame.Day, TimeFrame.Week, TimeFrame.Month
-# 对于像 15Min 这样的日内数据，使用 TimeFrame.Minute 然后重采样，或者检查是否支持特定的间隔。
-# Alpaca v2 API 也直接支持字符串表示：1Min, 5Min, 15Min, 1H, 1D。
-# 为了清晰起见，如果需要，可以使用字符串表示，或者使用枚举。
-# time_frame = TimeFrame.Minute * 15 # 这样直接使用枚举是行不通的
-time_frame_unit = TimeFrame.Minute # 基本单位
-time_frame_value = 15 # 单位的值
+time_frame_value = 15 # 单位的值 (15 minutes)
 
-# 或者，如果库版本/API 端点支持，直接使用字符串表示
-# time_frame_str = "15Min" # 示例：查看 Alpaca 文档以获取确切格式
+# 设置目标日期
+target_date_str = "2024-01-01"
 
-start = "2023-01-01" # 根据需要调整开始日期
-end = "2023-12-31"   # 根据需要调整结束日期
+# 查找目标日期或之前的最后一个交易日
+trading_day = get_last_trading_day(api, target_date_str)
 
-# 使用枚举方法获取数据（如果 API 不直接支持，则需要后续重采样）
-# 如果使用 TimeFrame.Minute，您将获取 1 分钟数据然后重采样。
-# 让我们尝试直接获取 15 分钟数据，如果 API 通过字符串支持的话。
-# get_bars 方法似乎更倾向于 TimeFrame 枚举。让我们获取 1 分钟数据并重采样。
+if trading_day:
+    start = trading_day
+    end = trading_day # For intraday data of a single day
 
-print("首先获取 1 分钟数据用于重采样...")
-spy_data_1min = fetch_historical_data(ticker, TimeFrame.Minute, start, end)
+    # 获取该交易日的 1 分钟数据用于重采样
+    print(f"正在获取 {ticker} 在 {trading_day} 的 1 分钟数据...")
+    spy_data_1min = fetch_historical_data(ticker, TimeFrame.Minute, start, end)
 
-if spy_data_1min is not None and not spy_data_1min.empty:
-    print(f"\n原始 1 分钟数据样本（前 5 行）：\n{spy_data_1min.head()}")
-    print(f"\n原始 1 分钟数据样本（后 5 行）：\n{spy_data_1min.tail()}")
-    print(f"\n数据信息：\n")
-    spy_data_1min.info()
+    if spy_data_1min is not None and not spy_data_1min.empty:
+        print(f"\n原始 1 分钟数据样本（前 5 行）：\n{spy_data_1min.head()}")
+        print(f"\n原始 1 分钟数据样本（后 5 行）：\n{spy_data_1min.tail()}")
+        print(f"\n数据信息：\n")
+        spy_data_1min.info()
 
-    # 重采样到 15 分钟频率
-    # 定义聚合规则
-    agg_dict = {
-        'open': 'first',      # 开盘价取第一个值
-        'high': 'max',        # 最高价取最大值
-        'low': 'min',         # 最低价取最小值
-        'close': 'last',      # 收盘价取最后一个值
-        'volume': 'sum',      # 成交量求和
-        'trade_count': 'sum', # 交易次数求和（如果可用）
-        'vwap': 'mean'        # 成交量加权平均价取平均值（如果可用且有意义）
-    }
-    # 聚合前过滤掉不存在的列
-    agg_dict = {k: v for k, v in agg_dict.items() if k in spy_data_1min.columns}
+        # 重采样到 15 分钟频率
+        # 定义聚合规则
+        agg_dict = {
+            'open': 'first',      # 开盘价取第一个值
+            'high': 'max',        # 最高价取最大值
+            'low': 'min',         # 最低价取最小值
+            'close': 'last',      # 收盘价取最后一个值
+            'volume': 'sum',      # 成交量求和
+            'trade_count': 'sum', # 交易次数求和（如果可用）
+            'vwap': 'mean'        # 成交量加权平均价取平均值（如果可用且有意义）
+        }
+        # 聚合前过滤掉不存在的列
+        agg_dict = {k: v for k, v in agg_dict.items() if k in spy_data_1min.columns}
 
-    print(f"\n正在重采样到 {time_frame_value} 分钟...")
-    spy_data_15min = spy_data_1min.resample(f'{time_frame_value}T').agg(agg_dict).dropna() # 'T' 是分钟的别名
+        print(f"\n正在重采样到 {time_frame_value} 分钟...")
+        # 使用 label='right', closed='right' 来确保时间戳代表区间的结束
+        # 对于交易数据，通常使用默认的 label='left', closed='left' 即可，代表区间的开始
+        spy_data_15min = spy_data_1min.resample(f'{time_frame_value}T').agg(agg_dict).dropna()
 
-    print(f"\n重采样后的 {time_frame_value} 分钟数据样本（前 5 行）：\n{spy_data_15min.head()}")
-    print(f"\n重采样后的 {time_frame_value} 分钟数据样本（后 5 行）：\n{spy_data_15min.tail()}")
-    print(f"\n重采样后的数据信息：\n")
-    spy_data_15min.info()
+        print(f"\n重采样后的 {time_frame_value} 分钟数据样本（前 5 行）：\n{spy_data_15min.head()}")
+        print(f"\n重采样后的 {time_frame_value} 分钟数据样本（后 5 行）：\n{spy_data_15min.tail()}")
+        print(f"\n重采样后的数据信息：\n")
+        spy_data_15min.info()
 
-    # --- 数据清洗/预处理（示例） ---
-    # 检查缺失值（尽管 resample().dropna() 处理了重采样间隙产生的 NaN）
-    if spy_data_15min.isnull().values.any():
-        print("\n警告：重采样后检测到缺失值。")
-        # 决定处理策略（例如，向前填充、插值）
-        # spy_data_15min.fillna(method='ffill', inplace=True)
+        # --- 数据清洗/预处理（示例） ---
+        # 检查缺失值（尽管 resample().dropna() 处理了重采样间隙产生的 NaN）
+        if spy_data_15min.isnull().values.any():
+            print("\n警告：重采样后检测到缺失值。")
+            # 决定处理策略（例如，向前填充、插值）
+            # spy_data_15min.fillna(method='ffill', inplace=True)
 
-    # 现在您可以使用 spy_data_15min 进行策略实施
-    # 例如：在 spy_data_15min['close'] 上计算指标
+        # 现在您可以使用 spy_data_15min 进行策略实施
+        # 例如：在 spy_data_15min['close'] 上计算指标
+        print(f"\n已成功获取并重采样 {ticker} 在 {trading_day} 的 {time_frame_value} 分钟数据。")
 
+    else:
+        print(f"\n无法获取或处理 {ticker} 在 {trading_day} 的数据。")
 else:
-    print(f"\n无法获取或处理 {ticker} 的数据。")
+    print(f"无法确定 {target_date_str} 或之前的交易日。")
 
 # ===========================================================================================
 # 第二部分：策略实施与回测（续）
 # ===========================================================================================
-# （您现有的策略实施代码将在此处继续，使用获取的数据）
+# （您现有的策略实施代码将在此处继续，使用获取的数据 spy_data_15min）
 # ...
