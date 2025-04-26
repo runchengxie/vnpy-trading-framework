@@ -1,0 +1,15 @@
+name: cqf-algo-trading
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pandas
+  - python-dotenv
+  - pip:
+    - alpaca-trade-api
+  # Add other dependencies if needed, e.g., for backtesting libraries
+  # - backtrader
+  # - vectorbt
+  # - matplotlib # For plotting
+  # - seaborn # For plotting
