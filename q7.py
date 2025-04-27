@@ -3,7 +3,8 @@ import pandas as pd
 from alpaca_trade_api.rest import REST, TimeFrame
 from dotenv import load_dotenv
 from datetime import date, timedelta
-import backtrader as bt 
+import backtrader as bt
+import pyarrow.feather as feather
 
 # ===========================================================================================
 # 第一部分：策略实施与回测（Python 重点）
@@ -103,12 +104,16 @@ if not API_KEY or not SECRET_KEY:
     print("请设置 APCA_API_KEY_ID 和 APCA_API_SECRET_KEY。")
     # exit() # 或者适当地处理错误
 
+# Define cache directory
+CACHE_DIR = 'cache'
+os.makedirs(CACHE_DIR, exist_ok=True) # Create cache directory if it doesn't exist
+
 # 初始化 Alpaca API
 api = REST(API_KEY, SECRET_KEY, base_url=BASE_URL, api_version='v2')
 
 def fetch_historical_data(symbol, timeframe, start_date, end_date):
     """
-    使用 Alpaca API 获取给定交易品种的历史 K 线数据。
+    使用 Alpaca API 获取给定交易品种的历史 K 线数据，并使用 Feather 格式进行缓存。
 
     Args:
         symbol (str): 交易品种代码 (例如, 'SPY')。
@@ -119,25 +124,69 @@ def fetch_historical_data(symbol, timeframe, start_date, end_date):
     Returns:
         pandas.DataFrame: 包含历史 K 线数据的 DataFrame，如果发生错误则返回 None。
     """
+    # --- Cache Handling ---
+    # Create a unique filename for the cache
+    timeframe_str = str(timeframe).replace("TimeFrame.", "") # Get a string representation like 'Minute'
+    cache_filename = f"{symbol}_{timeframe_str}_{start_date}_{end_date}.arrow"
+    cache_filepath = os.path.join(CACHE_DIR, cache_filename)
+
+    # Check if cached file exists
+    if os.path.exists(cache_filepath):
+        try:
+            print(f"正在从缓存加载数据: {cache_filepath}")
+            bars = feather.read_feather(cache_filepath)
+            # Feather might lose timezone info on index, re-apply if necessary
+            if not isinstance(bars.index, pd.DatetimeIndex):
+                 bars.index = pd.to_datetime(bars.index) # Ensure index is datetime
+            if bars.index.tz is None:
+                 bars.index = bars.index.tz_localize('UTC') # Assume UTC if no timezone
+            bars.index = bars.index.tz_convert('America/New_York') # Convert to desired timezone
+            print(f"成功从缓存加载 {len(bars)} 个数据点。")
+            return bars
+        except Exception as e:
+            print(f"从缓存加载数据时出错: {e}. 将尝试从 API 获取。")
+            # If loading fails, proceed to fetch from API
+
+    # --- Fetch from API (if not cached or cache load failed) ---
     try:
-        print(f"正在获取 {symbol} 从 {start_date} 到 {end_date} 的 {timeframe} 数据...")
-        # 注意：Alpaca 的 get_bars 返回 UTC 时间的数据。
-        # Request data in RFC-3339 format for clarity with timezones
+        print(f"正在从 API 获取 {symbol} 从 {start_date} 到 {end_date} 的 {timeframe} 数据...")
+        # Note: Alpaca's get_bars returns data in UTC.
         start_dt_iso = pd.Timestamp(start_date, tz='America/New_York').tz_convert('UTC').isoformat()
-        # For end_date, ensure it includes the full day if needed, or adjust as per API requirements
-        # Let's fetch up to the end of the specified day in NY time
         end_dt_iso = (pd.Timestamp(end_date, tz='America/New_York') + timedelta(days=1) - timedelta(seconds=1)).tz_convert('UTC').isoformat()
 
         bars = api.get_bars(symbol, timeframe, start=start_dt_iso, end=end_dt_iso, adjustment='raw').df
-        # 将索引转换为美国/东部时区，因为市场数据通常在此 TZ 中查看
+
         if not bars.empty:
+            # Convert index to America/New_York timezone for consistency
             bars.index = bars.index.tz_convert('America/New_York')
-            # Filter data to be strictly within the requested start/end dates in NY time
+            # Filter data strictly within the requested start/end dates in NY time
             bars = bars[(bars.index >= pd.Timestamp(start_date, tz='America/New_York')) &
                         (bars.index <= pd.Timestamp(end_date, tz='America/New_York') + timedelta(days=1))]
 
-        print(f"成功获取 {len(bars)} 个数据点。")
-        return bars
+            print(f"成功从 API 获取 {len(bars)} 个数据点。")
+
+            # --- Save to Cache ---
+            try:
+                # Feather requires a default index or a RangeIndex. Reset index before saving.
+                # Keep the original index in a column if needed later, though for backtrader it's usually the index.
+                # Ensure the index has a name before resetting, or handle potential errors.
+                if bars.index.name is None:
+                    bars.index.name = 'timestamp' # Assign a default name if None
+                bars_to_save = bars.reset_index()
+                feather.write_feather(bars_to_save, cache_filepath)
+                print(f"数据已缓存到: {cache_filepath}")
+                # Restore the index after saving if needed for the return value
+                # bars = bars_to_save.set_index('timestamp')
+                # bars.index = bars.index.tz_localize('America/New_York') # Re-apply timezone after setting index
+
+            except Exception as e:
+                print(f"缓存数据时出错: {e}") # Log caching error but continue
+
+            return bars
+        else:
+            print(f"未获取到 {symbol} 的数据。")
+            return None # Return None if no data fetched
+
     except Exception as e:
         print(f"获取 {symbol} 数据时出错: {e}")
         return None
@@ -288,105 +337,132 @@ if spy_data_1min is not None and not spy_data_1min.empty:
         print(f"\n重采样后的数据信息：\n")
         spy_data_resampled.info()
 
+        # --- 参数优化设置 ---
+        print("\n开始参数优化...")
+
         # 1. 创建 Cerebro 引擎
-        cerebro = bt.Cerebro()
+        cerebro = bt.Cerebro(optreturn=False) # optreturn=False 更适合与分析器一起使用
 
-        # 2. 添加策略
-        # 可以传递 ADX 参数，或者使用默认值
-        cerebro.addstrategy(EMACrossoverStrategy,
-                            ema_short=10,
-                            ema_long=30,
-                            adx_period=14,
-                            adx_threshold=25.0, # 仅在 ADX > 25 时入场
-                            printlog=True) # 设置 printlog=True 查看交易日志
-
-        # 3. 准备数据
-        # Backtrader 需要特定的列名：datetime, open, high, low, close, volume, openinterest
-        # 确保我们的 DataFrame 索引是 datetime 对象（已经是）
-        # 如果缺少 openinterest，可以添加一列 0
-        if 'openinterest' not in spy_data_resampled.columns:
-            spy_data_resampled['openinterest'] = 0
-
-        # 将 DataFrame 转换为 Backtrader 数据馈送
-        data_feed = bt.feeds.PandasData(
-            dataname=spy_data_resampled,
-            datetime=None,  # 使用索引作为 datetime
-            open='open',
-            high='high',
-            low='low',
-            close='close',
-            volume='volume',
-            openinterest='openinterest',
-            # timeframe=bt.TimeFrame.Minutes, # 指定时间框架
-            # compression=time_frame_value    # 指定压缩级别
+        # 2. 添加策略进行优化
+        #    为需要优化的参数提供范围或列表
+        strats = cerebro.optstrategy(
+            EMACrossoverStrategy,
+            ema_short=range(5, 16, 5),       # 测试 5, 10, 15
+            ema_long=range(20, 41, 10),      # 测试 20, 30, 40
+            adx_period=range(10, 21, 5),     # 测试 10, 15, 20
+            adx_threshold=[20.0, 25.0, 30.0] # 测试 20, 25, 30
+            # printlog=False # 优化时通常关闭日志以保持输出清洁
         )
 
-        # 4. 添加数据到 Cerebro
+        # 3. 准备数据 (与之前相同)
+        if 'openinterest' not in spy_data_resampled.columns:
+            spy_data_resampled['openinterest'] = 0
+        data_feed = bt.feeds.PandasData(dataname=spy_data_resampled, datetime=None, open='open', high='high', low='low', close='close', volume='volume', openinterest='openinterest')
         cerebro.adddata(data_feed)
 
-        # 5. 设置初始资本
+        # 4. 设置初始资本 (与之前相同)
         cerebro.broker.setcash(100000.0)
 
-        # 6. 设置佣金 - 例如，每股 0.01 美元
+        # 5. 设置佣金 (与之前相同)
         cerebro.broker.setcommission(commission=0.01)
 
-        # 7. (可选) 添加分析器
+        # 6. 添加分析器 (与之前相同，将在每次优化运行中计算)
         cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name='tradeanalyzer')
-        cerebro.addanalyzer(bt.analyzers.SharpeRatio, _name='sharpe', timeframe=bt.TimeFrame.Days) # 基于日收益率计算夏普比率
+        cerebro.addanalyzer(bt.analyzers.SharpeRatio, _name='sharpe', timeframe=bt.TimeFrame.Days)
         cerebro.addanalyzer(bt.analyzers.DrawDown, _name='drawdown')
+        cerebro.addanalyzer(bt.analyzers.Returns, _name='returns') # 添加年化收益率分析器
 
-        # 8. 运行回测
-        print('\n开始回测...')
-        initial_portfolio_value = cerebro.broker.getvalue()
-        print(f'初始投资组合价值: {initial_portfolio_value:,.2f}')
+        # 7. 运行优化
+        #    可以指定 maxcpus 来使用多核处理器加速，例如 maxcpus=os.cpu_count()
+        #    注意：并行运行可能与某些复杂的 print 输出或调试冲突
+        opt_results = cerebro.run(maxcpus=1) # 先用单核运行确保逻辑正确
 
-        results = cerebro.run() # 运行回测
+        # 8. 分析优化结果
+        print('\n--- 参数优化结果分析 ---')
+        parsed_results = []
+        for run in opt_results:
+            for strategy_instance in run: # 每个 run 可能包含一个策略实例列表（虽然这里只有一个）
+                params = strategy_instance.params # 获取当前运行的参数
+                analyzers = strategy_instance.analyzers # 获取分析器
+                trade_analysis = analyzers.tradeanalyzer.get_analysis()
+                sharpe_ratio = analyzers.sharpe.get_analysis()
+                drawdown = analyzers.drawdown.get_analysis()
+                returns_analysis = analyzers.returns.get_analysis()
 
-        final_portfolio_value = cerebro.broker.getvalue()
-        print(f'最终投资组合价值: {final_portfolio_value:,.2f}')
-        print(f'净收益: {(final_portfolio_value - initial_portfolio_value):,.2f}')
-        print(f'净收益率: {((final_portfolio_value / initial_portfolio_value) - 1) * 100:.2f}%')
+                total_trades = trade_analysis.total.total if trade_analysis.total else 0
+                win_rate = (trade_analysis.won.total / total_trades * 100) if total_trades > 0 else 0
+                net_pnl = trade_analysis.pnl.net.total if trade_analysis.pnl else 0
 
-        # 9. (可选) 打印分析结果
-        strat = results[0] # 获取第一个策略实例
-        analyzer_results = strat.analyzers.getnames()
-        if 'tradeanalyzer' in analyzer_results:
-            trade_analysis = strat.analyzers.tradeanalyzer.get_analysis()
-            print("\n--- 交易分析 ---")
-            if trade_analysis.total.total:
-                print(f"总交易次数: {trade_analysis.total.total}")
-                print(f"盈利交易次数: {trade_analysis.won.total}")
-                print(f"亏损交易次数: {trade_analysis.lost.total}")
-                print(f"胜率: {trade_analysis.won.total / trade_analysis.total.total * 100:.2f}%" if trade_analysis.total.total > 0 else "N/A")
-                print(f"总净利润: {trade_analysis.pnl.net.total:.2f}")
-                print(f"平均每次交易净利润: {trade_analysis.pnl.net.average:.2f}")
-            else:
-                print("没有发生交易。")
+                parsed_results.append({
+                    'ema_short': params.ema_short,
+                    'ema_long': params.ema_long,
+                    'adx_period': params.adx_period,
+                    'adx_threshold': params.adx_threshold,
+                    'final_value': strategy_instance.broker.getvalue(), # 获取最终组合价值
+                    'pnl': net_pnl,
+                    'sharpe_ratio': sharpe_ratio.get('sharperatio', None),
+                    'max_drawdown': drawdown.max.drawdown,
+                    'total_trades': total_trades,
+                    'win_rate': win_rate,
+                    'annual_return': returns_analysis.get('rnorm100', None) # 获取年化收益率
+                })
 
-        if 'sharpe' in analyzer_results:
-            sharpe_ratio = strat.analyzers.sharpe.get_analysis()
-            print("\n--- 夏普比率 ---")
-            print(f"年化夏普比率: {sharpe_ratio.get('sharperatio', 'N/A')}") # Sharpe ratio is often annualized by default depending on params
+        # 将结果转换为 DataFrame 便于分析
+        results_df = pd.DataFrame(parsed_results)
 
-        if 'drawdown' in analyzer_results:
-            drawdown = strat.analyzers.drawdown.get_analysis()
-            print("\n--- 回撤分析 ---")
-            print(f"最大回撤: {drawdown.max.drawdown:.2f}%")
-            print(f"最大回撤金额: {drawdown.max.moneydown:.2f}")
+        # 按某个指标排序，例如最终价值或夏普比率
+        results_df_sorted = results_df.sort_values(by='final_value', ascending=False)
+        # 或者按夏普比率排序 (处理 None 值)
+        # results_df_sorted = results_df.sort_values(by='sharpe_ratio', ascending=False, na_position='last')
 
 
-        # 10. (可选) 绘制结果图
-        # 注意：绘图可能需要 matplotlib 安装 (pip install matplotlib)
-        # 在某些环境中（如无 GUI 的服务器），绘图可能会失败
+        print("\n优化结果摘要 (按最终价值排序):")
+        print(results_df_sorted.head()) # 打印表现最好的几组参数
+
+        # 找到最优参数组合 (基于最终价值)
+        best_params = results_df_sorted.iloc[0]
+        print("\n最优参数组合 (基于最终价值):")
+        print(best_params)
+
+        # (可选) 可以将 results_df_sorted 保存到 CSV 文件
+        # results_df_sorted.to_csv('optimization_results.csv', index=False)
+
+        # --- (可选) 使用最优参数进行一次最终回测并绘图 ---
+        print("\n使用最优参数进行最终回测...")
+        final_cerebro = bt.Cerebro()
+        final_cerebro.addstrategy(EMACrossoverStrategy,
+                                  ema_short=int(best_params['ema_short']), # 从结果中获取最优参数
+                                  ema_long=int(best_params['ema_long']),
+                                  adx_period=int(best_params['adx_period']),
+                                  adx_threshold=float(best_params['adx_threshold']),
+                                  printlog=True) # 在最终回测中打开日志
+
+        # 添加数据、资金、佣金、分析器 (与优化循环内类似)
+        final_cerebro.adddata(data_feed)
+        final_cerebro.broker.setcash(100000.0)
+        final_cerebro.broker.setcommission(commission=0.01)
+        final_cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name='tradeanalyzer')
+        final_cerebro.addanalyzer(bt.analyzers.SharpeRatio, _name='sharpe', timeframe=bt.TimeFrame.Days)
+        final_cerebro.addanalyzer(bt.analyzers.DrawDown, _name='drawdown')
+
+        # 运行最终回测
+        final_results = final_cerebro.run()
+        final_strat = final_results[0]
+
+        # 打印最终回测的分析结果 (可以复用之前的打印逻辑)
+        # ... (添加打印最终分析结果的代码) ...
+        print(f'\n最终投资组合价值 (最优参数): {final_cerebro.broker.getvalue():,.2f}')
+
+        # 绘制最终回测图
         try:
-            print("\n尝试生成回测图表...")
-            cerebro.plot(style='candlestick', barup='green', bardown='red')
+            print("\n尝试生成最终回测图表...")
+            final_cerebro.plot(style='candlestick', barup='green', bardown='red')
         except Exception as e:
             print(f"\n无法生成图表: {e}")
-            print("请确保已安装 matplotlib 并且在支持 GUI 的环境中运行。")
+
 
     else:
-        print(f"\n重采样后数据为空，无法进行回测。")
+        print(f"\n重采样后数据为空，无法进行回测或优化。")
 
 else:
     print(f"\n无法获取或处理 {ticker} 在 {start_date_str} 到 {end_date_str} 的数据。")

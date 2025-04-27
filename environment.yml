@@ -6,7 +6,8 @@ dependencies:
   - python=3.10
   - pandas
   - python-dotenv
-  - matplotlib 
+  - matplotlib
+  - pyarrow
   - pip:
     - alpaca-trade-api
     - backtrader
