@@ -2,7 +2,8 @@ import os
 import pandas as pd
 from alpaca_trade_api.rest import REST, TimeFrame
 from dotenv import load_dotenv
-from datetime import date, timedelta # Added for date manipulation
+from datetime import date, timedelta
+import backtrader as bt 
 
 # ===========================================================================================
 # 第一部分：策略实施与回测（Python 重点）
@@ -112,8 +113,8 @@ def fetch_historical_data(symbol, timeframe, start_date, end_date):
     Args:
         symbol (str): 交易品种代码 (例如, 'SPY')。
         timeframe (TimeFrame): K 线的时间范围 (例如, TimeFrame.Minute, TimeFrame.Hour, TimeFrame.Day)。
-        start_date (str): 开始日期，格式为 'YYYY-MM-DD'。
-        end_date (str): 结束日期，格式为 'YYYY-MM-DD'。
+        start_date (str): 开始日期，格式为 'YYYY-MM-DD' 或 ISO 格式字符串。
+        end_date (str): 结束日期，格式为 'YYYY-MM-DD' 或 ISO 格式字符串。
 
     Returns:
         pandas.DataFrame: 包含历史 K 线数据的 DataFrame，如果发生错误则返回 None。
@@ -121,82 +122,280 @@ def fetch_historical_data(symbol, timeframe, start_date, end_date):
     try:
         print(f"正在获取 {symbol} 从 {start_date} 到 {end_date} 的 {timeframe} 数据...")
         # 注意：Alpaca 的 get_bars 返回 UTC 时间的数据。
-        bars = api.get_bars(symbol, timeframe, start=start_date, end=end_date, adjustment='raw').df
-        # 将索引转换为美国/东部时区，因为市场数据通常在此 T Z 中查看
-        bars.index = bars.index.tz_convert('America/New_York')
+        # Request data in RFC-3339 format for clarity with timezones
+        start_dt_iso = pd.Timestamp(start_date, tz='America/New_York').tz_convert('UTC').isoformat()
+        # For end_date, ensure it includes the full day if needed, or adjust as per API requirements
+        # Let's fetch up to the end of the specified day in NY time
+        end_dt_iso = (pd.Timestamp(end_date, tz='America/New_York') + timedelta(days=1) - timedelta(seconds=1)).tz_convert('UTC').isoformat()
+
+        bars = api.get_bars(symbol, timeframe, start=start_dt_iso, end=end_dt_iso, adjustment='raw').df
+        # 将索引转换为美国/东部时区，因为市场数据通常在此 TZ 中查看
+        if not bars.empty:
+            bars.index = bars.index.tz_convert('America/New_York')
+            # Filter data to be strictly within the requested start/end dates in NY time
+            bars = bars[(bars.index >= pd.Timestamp(start_date, tz='America/New_York')) &
+                        (bars.index <= pd.Timestamp(end_date, tz='America/New_York') + timedelta(days=1))]
+
         print(f"成功获取 {len(bars)} 个数据点。")
         return bars
     except Exception as e:
         print(f"获取 {symbol} 数据时出错: {e}")
         return None
 
+# --- Backtrader Strategy Definition ---
+class EMACrossoverStrategy(bt.Strategy):
+    params = (
+        ('ema_short', 10), # 短周期 EMA
+        ('ema_long', 30),  # 长周期 EMA
+        ('adx_period', 14), # ADX 周期
+        ('adx_threshold', 25.0), # ADX 阈值，用于过滤信号
+        ('printlog', False), # 是否打印交易日志
+    )
+
+    def log(self, txt, dt=None, doprint=False):
+        ''' 日志记录函数 '''
+        if self.params.printlog or doprint:
+            dt = dt or self.datas[0].datetime.date(0)
+            print(f'{dt.isoformat()}, {txt}')
+
+    def __init__(self):
+        # 保持对收盘价序列的引用
+        self.dataclose = self.datas[0].close
+        # Keep references to high, low as well for ADX
+        self.datahigh = self.datas[0].high
+        self.datalow = self.datas[0].low
+
+        # 跟踪挂单和持仓状态
+        self.order = None
+        self.buyprice = None
+        self.buycomm = None
+
+        # 添加 EMA 指标
+        self.ema_short = bt.indicators.ExponentialMovingAverage(
+            self.datas[0], period=self.params.ema_short)
+        self.ema_long = bt.indicators.ExponentialMovingAverage(
+            self.datas[0], period=self.params.ema_long)
+
+        # 添加交叉信号指标
+        self.crossover = bt.indicators.CrossOver(self.ema_short, self.ema_long)
+
+        # 添加 ADX 指标
+        self.adx = bt.indicators.AverageDirectionalMovementIndex(
+            self.datas[0], period=self.params.adx_period)
+
+    def notify_order(self, order):
+        if order.status in [order.Submitted, order.Accepted]:
+            # 买入/卖出订单 已提交/已接受 - 无事可做
+            return
+
+        # 检查订单是否已完成
+        # 注意：如果现金不足，经纪商可能会拒绝订单
+        if order.status in [order.Completed]:
+            if order.isbuy():
+                self.log(
+                    f'BUY EXECUTED, Price: {order.executed.price:.2f}, Cost: {order.executed.value:.2f}, Comm {order.executed.comm:.2f}', doprint=True)
+                self.buyprice = order.executed.price
+                self.buycomm = order.executed.comm
+            elif order.issell():
+                self.log(f'SELL EXECUTED, Price: {order.executed.price:.2f}, Cost: {order.executed.value:.2f}, Comm {order.executed.comm:.2f}', doprint=True)
+
+            self.bar_executed = len(self)
+
+        elif order.status in [order.Canceled, order.Margin, order.Rejected]:
+            self.log('Order Canceled/Margin/Rejected')
+
+        # 写出订单状态
+        self.order = None
+
+    def notify_trade(self, trade):
+        if not trade.isclosed:
+            return
+
+        self.log(f'OPERATION PROFIT, GROSS {trade.pnl:.2f}, NET {trade.pnlcomm:.2f}', doprint=True)
+
+
+    def next(self):
+        # 记录当前周期的收盘价
+        # self.log(f'Close, {self.dataclose[0]:.2f}')
+        # Log ADX value for debugging/observation
+        # self.log(f'ADX: {self.adx.adx[0]:.2f}')
+
+        # 如果有挂单，则不能发送第二个订单
+        if self.order:
+            return
+
+        # 检查我们是否在市场中
+        if not self.position:
+            # 不在市场中，检查是否触发买入信号
+            # 条件：EMA 短上穿长 AND ADX > 阈值 (表示趋势强劲)
+            if self.crossover > 0 and self.adx.adx[0] > self.params.adx_threshold:
+                self.log(f'BUY CREATE, Close: {self.dataclose[0]:.2f}, ADX: {self.adx.adx[0]:.2f}')
+                # 保持跟踪创建的订单
+                self.order = self.buy()
+
+        else:
+            # 已经在市场中，检查是否触发卖出信号
+            # 条件：EMA 短下穿长 (退出信号不一定需要 ADX 过滤，但可以根据策略调整)
+            # 如果希望仅在趋势减弱时退出，可以添加 ADX 条件，例如 self.adx.adx[0] < self.params.adx_threshold
+            # 这里我们保持原始逻辑：只要发生死叉就退出
+            if self.crossover < 0:
+                self.log(f'SELL CREATE, Close: {self.dataclose[0]:.2f}, ADX: {self.adx.adx[0]:.2f}')
+                # 保持跟踪创建的订单
+                self.order = self.sell()
+
 # --- 使用示例 ---
 # 定义参数
 ticker = 'SPY' # 标普 500 ETF
 time_frame_value = 15 # 单位的值 (15 minutes)
+time_frame_unit = TimeFrame.Minute # 使用 Alpaca 的 TimeFrame 枚举
 
-# 设置目标日期
-target_date_str = "2024-01-01"
+# --- 修改日期范围以进行回测 ---
+# 例如，回测 2023 年的数据
+start_date_str = "2023-01-01"
+end_date_str = "2023-12-31"
 
-# 查找目标日期或之前的最后一个交易日
-trading_day = get_last_trading_day(api, target_date_str)
+# 获取该时间段的 1 分钟数据用于重采样
+print(f"正在获取 {ticker} 从 {start_date_str} 到 {end_date_str} 的 1 分钟数据...")
+# 注意：对于长时间跨度的高频数据，Alpaca 可能会有限制或需要分块获取
+# 这里我们尝试一次性获取，如果失败，需要实现分块逻辑
+spy_data_1min = fetch_historical_data(ticker, TimeFrame.Minute, start_date_str, end_date_str)
 
-if trading_day:
-    start = trading_day
-    end = trading_day # For intraday data of a single day
+if spy_data_1min is not None and not spy_data_1min.empty:
+    print(f"\n原始 1 分钟数据样本（前 5 行）：\n{spy_data_1min.head()}")
+    print(f"\n原始 1 分钟数据样本（后 5 行）：\n{spy_data_1min.tail()}")
+    print(f"\n数据信息：\n")
+    spy_data_1min.info()
 
-    # 获取该交易日的 1 分钟数据用于重采样
-    print(f"正在获取 {ticker} 在 {trading_day} 的 1 分钟数据...")
-    spy_data_1min = fetch_historical_data(ticker, TimeFrame.Minute, start, end)
+    # 重采样到目标频率
+    agg_dict = {
+        'open': 'first',
+        'high': 'max',
+        'low': 'min',
+        'close': 'last',
+        'volume': 'sum',
+        'trade_count': 'sum',
+        'vwap': 'mean'
+    }
+    agg_dict = {k: v for k, v in agg_dict.items() if k in spy_data_1min.columns}
 
-    if spy_data_1min is not None and not spy_data_1min.empty:
-        print(f"\n原始 1 分钟数据样本（前 5 行）：\n{spy_data_1min.head()}")
-        print(f"\n原始 1 分钟数据样本（后 5 行）：\n{spy_data_1min.tail()}")
-        print(f"\n数据信息：\n")
-        spy_data_1min.info()
+    print(f"\n正在重采样到 {time_frame_value} 分钟...")
+    resample_freq = f'{time_frame_value}T'
+    spy_data_resampled = spy_data_1min.resample(resample_freq).agg(agg_dict).dropna()
 
-        # 重采样到 15 分钟频率
-        # 定义聚合规则
-        agg_dict = {
-            'open': 'first',      # 开盘价取第一个值
-            'high': 'max',        # 最高价取最大值
-            'low': 'min',         # 最低价取最小值
-            'close': 'last',      # 收盘价取最后一个值
-            'volume': 'sum',      # 成交量求和
-            'trade_count': 'sum', # 交易次数求和（如果可用）
-            'vwap': 'mean'        # 成交量加权平均价取平均值（如果可用且有意义）
-        }
-        # 聚合前过滤掉不存在的列
-        agg_dict = {k: v for k, v in agg_dict.items() if k in spy_data_1min.columns}
-
-        print(f"\n正在重采样到 {time_frame_value} 分钟...")
-        # 使用 label='right', closed='right' 来确保时间戳代表区间的结束
-        # 对于交易数据，通常使用默认的 label='left', closed='left' 即可，代表区间的开始
-        spy_data_15min = spy_data_1min.resample(f'{time_frame_value}T').agg(agg_dict).dropna()
-
-        print(f"\n重采样后的 {time_frame_value} 分钟数据样本（前 5 行）：\n{spy_data_15min.head()}")
-        print(f"\n重采样后的 {time_frame_value} 分钟数据样本（后 5 行）：\n{spy_data_15min.tail()}")
+    # --- Backtrader 设置和运行 ---
+    if not spy_data_resampled.empty:
+        print(f"\n重采样后的 {time_frame_value} 分钟数据样本（前 5 行）：\n{spy_data_resampled.head()}")
         print(f"\n重采样后的数据信息：\n")
-        spy_data_15min.info()
+        spy_data_resampled.info()
 
-        # --- 数据清洗/预处理（示例） ---
-        # 检查缺失值（尽管 resample().dropna() 处理了重采样间隙产生的 NaN）
-        if spy_data_15min.isnull().values.any():
-            print("\n警告：重采样后检测到缺失值。")
-            # 决定处理策略（例如，向前填充、插值）
-            # spy_data_15min.fillna(method='ffill', inplace=True)
+        # 1. 创建 Cerebro 引擎
+        cerebro = bt.Cerebro()
 
-        # 现在您可以使用 spy_data_15min 进行策略实施
-        # 例如：在 spy_data_15min['close'] 上计算指标
-        print(f"\n已成功获取并重采样 {ticker} 在 {trading_day} 的 {time_frame_value} 分钟数据。")
+        # 2. 添加策略
+        # 可以传递 ADX 参数，或者使用默认值
+        cerebro.addstrategy(EMACrossoverStrategy,
+                            ema_short=10,
+                            ema_long=30,
+                            adx_period=14,
+                            adx_threshold=25.0, # 仅在 ADX > 25 时入场
+                            printlog=True) # 设置 printlog=True 查看交易日志
+
+        # 3. 准备数据
+        # Backtrader 需要特定的列名：datetime, open, high, low, close, volume, openinterest
+        # 确保我们的 DataFrame 索引是 datetime 对象（已经是）
+        # 如果缺少 openinterest，可以添加一列 0
+        if 'openinterest' not in spy_data_resampled.columns:
+            spy_data_resampled['openinterest'] = 0
+
+        # 将 DataFrame 转换为 Backtrader 数据馈送
+        data_feed = bt.feeds.PandasData(
+            dataname=spy_data_resampled,
+            datetime=None,  # 使用索引作为 datetime
+            open='open',
+            high='high',
+            low='low',
+            close='close',
+            volume='volume',
+            openinterest='openinterest',
+            # timeframe=bt.TimeFrame.Minutes, # 指定时间框架
+            # compression=time_frame_value    # 指定压缩级别
+        )
+
+        # 4. 添加数据到 Cerebro
+        cerebro.adddata(data_feed)
+
+        # 5. 设置初始资本
+        cerebro.broker.setcash(100000.0)
+
+        # 6. 设置佣金 - 例如，每股 0.01 美元
+        cerebro.broker.setcommission(commission=0.01)
+
+        # 7. (可选) 添加分析器
+        cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name='tradeanalyzer')
+        cerebro.addanalyzer(bt.analyzers.SharpeRatio, _name='sharpe', timeframe=bt.TimeFrame.Days) # 基于日收益率计算夏普比率
+        cerebro.addanalyzer(bt.analyzers.DrawDown, _name='drawdown')
+
+        # 8. 运行回测
+        print('\n开始回测...')
+        initial_portfolio_value = cerebro.broker.getvalue()
+        print(f'初始投资组合价值: {initial_portfolio_value:,.2f}')
+
+        results = cerebro.run() # 运行回测
+
+        final_portfolio_value = cerebro.broker.getvalue()
+        print(f'最终投资组合价值: {final_portfolio_value:,.2f}')
+        print(f'净收益: {(final_portfolio_value - initial_portfolio_value):,.2f}')
+        print(f'净收益率: {((final_portfolio_value / initial_portfolio_value) - 1) * 100:.2f}%')
+
+        # 9. (可选) 打印分析结果
+        strat = results[0] # 获取第一个策略实例
+        analyzer_results = strat.analyzers.getnames()
+        if 'tradeanalyzer' in analyzer_results:
+            trade_analysis = strat.analyzers.tradeanalyzer.get_analysis()
+            print("\n--- 交易分析 ---")
+            if trade_analysis.total.total:
+                print(f"总交易次数: {trade_analysis.total.total}")
+                print(f"盈利交易次数: {trade_analysis.won.total}")
+                print(f"亏损交易次数: {trade_analysis.lost.total}")
+                print(f"胜率: {trade_analysis.won.total / trade_analysis.total.total * 100:.2f}%" if trade_analysis.total.total > 0 else "N/A")
+                print(f"总净利润: {trade_analysis.pnl.net.total:.2f}")
+                print(f"平均每次交易净利润: {trade_analysis.pnl.net.average:.2f}")
+            else:
+                print("没有发生交易。")
+
+        if 'sharpe' in analyzer_results:
+            sharpe_ratio = strat.analyzers.sharpe.get_analysis()
+            print("\n--- 夏普比率 ---")
+            print(f"年化夏普比率: {sharpe_ratio.get('sharperatio', 'N/A')}") # Sharpe ratio is often annualized by default depending on params
+
+        if 'drawdown' in analyzer_results:
+            drawdown = strat.analyzers.drawdown.get_analysis()
+            print("\n--- 回撤分析 ---")
+            print(f"最大回撤: {drawdown.max.drawdown:.2f}%")
+            print(f"最大回撤金额: {drawdown.max.moneydown:.2f}")
+
+
+        # 10. (可选) 绘制结果图
+        # 注意：绘图可能需要 matplotlib 安装 (pip install matplotlib)
+        # 在某些环境中（如无 GUI 的服务器），绘图可能会失败
+        try:
+            print("\n尝试生成回测图表...")
+            cerebro.plot(style='candlestick', barup='green', bardown='red')
+        except Exception as e:
+            print(f"\n无法生成图表: {e}")
+            print("请确保已安装 matplotlib 并且在支持 GUI 的环境中运行。")
 
     else:
-        print(f"\n无法获取或处理 {ticker} 在 {trading_day} 的数据。")
+        print(f"\n重采样后数据为空，无法进行回测。")
+
 else:
-    print(f"无法确定 {target_date_str} 或之前的交易日。")
+    print(f"\n无法获取或处理 {ticker} 在 {start_date_str} 到 {end_date_str} 的数据。")
+
 
 # ===========================================================================================
 # 第二部分：策略实施与回测（续）
 # ===========================================================================================
 # （您现有的策略实施代码将在此处继续，使用获取的数据 spy_data_15min）
+# ...
+# (后续可以添加均值回归策略的 Backtrader 实现)
 # ...
