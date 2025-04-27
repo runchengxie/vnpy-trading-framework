@@ -39,7 +39,7 @@ import backtrader as bt
 #         *   [ ] 记录所选指标的数学描述。
 
 # 3.  **均值回归策略实施：**
-#     *   [ ] **方法选择：** 选择一种方法（Z-score 偏差、距离度量、OU 过程模型）。
+#     *   [ ] **方法选择：** 选择一种方法（Z-score 偏差、距离度量、OU 过程模型）。 (选择了 Z-score)
 #     *   [ ] **指标/信号计算：**
 #         *   [ ] 实现所选均值回归信号的计算逻辑（例如，计算 Z-score 的滚动均值/标准差）。
 #     *   [ ] **信号生成：**
@@ -305,21 +305,124 @@ class EMACrossoverStrategy(bt.Strategy):
                 # 保持跟踪创建的订单
                 self.order = self.sell()
 
+# --- New Backtrader Strategy Definition: Mean Reversion Z-Score -----
+class MeanReversionZScoreStrategy(bt.Strategy):
+    params = (
+        ('zscore_period', 20),   # Z-score 计算周期
+        ('zscore_upper', 2.0),   # Z-score 卖出阈值 (做空)
+        ('zscore_lower', -2.0),  # Z-score 买入阈值 (做多)
+        ('exit_threshold', 0.0), # Z-score 回归到均值附近时的退出阈值
+        ('printlog', False),     # 是否打印交易日志
+    )
+
+    # --- 指标数学描述 ---
+    # Z-Score (标准分数):
+    # Z-Score 衡量一个数据点偏离其均值的程度，以标准差为单位。
+    # 计算公式：
+    # Z = (X - μ) / σ
+    # 其中：
+    # X 是当前价格 (self.data.close[0])
+    # μ 是价格在指定周期 (params.zscore_period) 内的滚动简单移动平均值 (SMA)
+    # σ 是价格在相同周期内的滚动标准差
+    #
+    # 策略逻辑：
+    # 当 Z-Score 低于一个负阈值 (params.zscore_lower) 时，表示价格相对于近期均值异常偏低，
+    # 预期价格会回归均值（上涨），因此产生买入信号。
+    # 当 Z-Score 高于一个正阈值 (params.zscore_upper) 时，表示价格相对于近期均值异常偏高，
+    # 预期价格会回归均值（下跌），因此产生卖出（做空）信号。
+    # 当价格回归到均值附近（Z-Score 接近 params.exit_threshold，通常为 0）时，平仓。
+    # ---
+
+    def log(self, txt, dt=None, doprint=False):
+        ''' 日志记录函数 '''
+        if self.params.printlog or doprint:
+            dt = dt or self.datas[0].datetime.date(0)
+            print(f'{dt.isoformat()}, {txt}')
+
+    def __init__(self):
+        self.dataclose = self.datas[0].close
+        self.order = None
+        self.buyprice = None
+        self.buycomm = None
+
+        # 计算滚动均值和标准差
+        rolling_mean = bt.indicators.SimpleMovingAverage(
+            self.datas[0], period=self.params.zscore_period)
+        rolling_std = bt.indicators.StandardDeviation(
+            self.datas[0], period=self.params.zscore_period)
+
+        # 计算 Z-score
+        # 添加一个小的 epsilon 防止除以零 (虽然 StandardDeviation 应该处理)
+        epsilon = 1e-6
+        self.zscore = (self.dataclose - rolling_mean) / (rolling_std + epsilon)
+
+    def notify_order(self, order):
+        # (Identical to EMACrossoverStrategy's notify_order)
+        if order.status in [order.Submitted, order.Accepted]:
+            return
+        if order.status in [order.Completed]:
+            if order.isbuy():
+                self.log(
+                    f'BUY EXECUTED, Price: {order.executed.price:.2f}, Cost: {order.executed.value:.2f}, Comm {order.executed.comm:.2f}', doprint=True)
+                self.buyprice = order.executed.price
+                self.buycomm = order.executed.comm
+            elif order.issell():
+                self.log(f'SELL EXECUTED, Price: {order.executed.price:.2f}, Cost: {order.executed.value:.2f}, Comm {order.executed.comm:.2f}', doprint=True)
+            self.bar_executed = len(self)
+        elif order.status in [order.Canceled, order.Margin, order.Rejected]:
+            self.log('Order Canceled/Margin/Rejected')
+        self.order = None
+
+    def notify_trade(self, trade):
+        # (Identical to EMACrossoverStrategy's notify_trade)
+        if not trade.isclosed:
+            return
+        self.log(f'OPERATION PROFIT, GROSS {trade.pnl:.2f}, NET {trade.pnlcomm:.2f}', doprint=True)
+
+    def next(self):
+        # self.log(f'Close: {self.dataclose[0]:.2f}, Z-Score: {self.zscore[0]:.2f}')
+
+        # 检查是否有挂单
+        if self.order:
+            return
+
+        # 检查 Z-score 是否有效 (指标需要预热期)
+        # Backtrader 的指标会自动处理，但我们可以显式检查 NaN
+        if pd.isna(self.zscore[0]):
+             return
+
+        # 检查是否持有仓位
+        if not self.position:
+            # 没有仓位，检查入场信号
+            if self.zscore[0] < self.params.zscore_lower:
+                self.log(f'BUY CREATE (Z < Lower), Close: {self.dataclose[0]:.2f}, Z-Score: {self.zscore[0]:.2f}')
+                self.order = self.buy()
+            # 如果允许做空，可以添加做空逻辑
+            elif self.zscore[0] > self.params.zscore_upper:
+                 self.log(f'SELL CREATE (Z > Upper), Close: {self.dataclose[0]:.2f}, Z-Score: {self.zscore[0]:.2f}')
+                 self.order = self.sell() # 做空
+
+        else:
+            # 持有仓位，检查出场信号 (回归到均值)
+            # 如果是多头仓位 (position.size > 0)
+            if self.position.size > 0 and self.zscore[0] >= self.params.exit_threshold:
+                self.log(f'CLOSE LONG (Z >= Exit), Close: {self.dataclose[0]:.2f}, Z-Score: {self.zscore[0]:.2f}')
+                self.order = self.close() # 平多仓
+            # 如果是空头仓位 (position.size < 0) 且允许做空
+            elif self.position.size < 0 and self.zscore[0] <= self.params.exit_threshold:
+                 self.log(f'CLOSE SHORT (Z <= Exit), Close: {self.dataclose[0]:.2f}, Z-Score: {self.zscore[0]:.2f}')
+                 self.order = self.close() # 平空仓
+
 # --- 使用示例 ---
-# 定义参数
+# 定义参数（前 5 行）：\n{spy_data_15min.head()}")
 ticker = 'SPY' # 标普 500 ETF
 time_frame_value = 15 # 单位的值 (15 minutes)
 time_frame_unit = TimeFrame.Minute # 使用 Alpaca 的 TimeFrame 枚举
-
-# --- 修改日期范围以进行回测 ---
-# 例如，回测 2023 年的数据
 start_date_str = "2023-01-01"
 end_date_str = "2023-12-31"
 
 # 获取该时间段的 1 分钟数据用于重采样
 print(f"正在获取 {ticker} 从 {start_date_str} 到 {end_date_str} 的 1 分钟数据...")
-# 注意：对于长时间跨度的高频数据，Alpaca 可能会有限制或需要分块获取
-# 这里我们尝试一次性获取，如果失败，需要实现分块逻辑
 spy_data_1min = fetch_historical_data(ticker, TimeFrame.Minute, start_date_str, end_date_str)
 
 if spy_data_1min is not None and not spy_data_1min.empty:
@@ -350,129 +453,49 @@ if spy_data_1min is not None and not spy_data_1min.empty:
         print(f"\n重采样后的数据信息：\n")
         spy_data_resampled.info()
 
-        # --- 参数优化设置 ---
-        print("\n开始参数优化...")
-
-        # 1. 创建 Cerebro 引擎
-        cerebro = bt.Cerebro(optreturn=False) # optreturn=False 更适合与分析器一起使用
-
-        # 2. 添加策略进行优化
-        #    为需要优化的参数提供范围或列表
-        strats = cerebro.optstrategy(
-            EMACrossoverStrategy,
-            ema_short=range(5, 16, 5),       # 测试 5, 10, 15
-            ema_long=range(20, 41, 10),      # 测试 20, 30, 40
-            adx_period=range(10, 21, 5),     # 测试 10, 15, 20
-            adx_threshold=[20.0, 25.0, 30.0] # 测试 20, 25, 30
-            # printlog=False # 优化时通常关闭日志以保持输出清洁
-        )
-
-        # 3. 准备数据 (与之前相同)
+        # --- 均值回归策略回测 ---
+        print("\n开始均值回归策略回测...")
+        cerebro = bt.Cerebro()
         if 'openinterest' not in spy_data_resampled.columns:
             spy_data_resampled['openinterest'] = 0
         data_feed = bt.feeds.PandasData(dataname=spy_data_resampled, datetime=None, open='open', high='high', low='low', close='close', volume='volume', openinterest='openinterest')
         cerebro.adddata(data_feed)
-
-        # 4. 设置初始资本 (与之前相同)
+        cerebro.addstrategy(MeanReversionZScoreStrategy, zscore_period=20, zscore_upper=2.0, zscore_lower=-2.0, exit_threshold=0.0, printlog=True)
         cerebro.broker.setcash(100000.0)
-
-        # 5. 设置佣金 (与之前相同)
         cerebro.broker.setcommission(commission=0.01)
-
-        # 6. 添加分析器 (与之前相同，将在每次优化运行中计算)
         cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name='tradeanalyzer')
         cerebro.addanalyzer(bt.analyzers.SharpeRatio, _name='sharpe', timeframe=bt.TimeFrame.Days)
         cerebro.addanalyzer(bt.analyzers.DrawDown, _name='drawdown')
-        cerebro.addanalyzer(bt.analyzers.Returns, _name='returns') # 添加年化收益率分析器
+        cerebro.addanalyzer(bt.analyzers.Returns, _name='returns')
 
-        # 7. 运行优化
-        #    可以指定 maxcpus 来使用多核处理器加速，例如 maxcpus=os.cpu_count()
-        #    注意：并行运行可能与某些复杂的 print 输出或调试冲突
-        opt_results = cerebro.run(maxcpus=1) # 先用单核运行确保逻辑正确
+        print("\n正在运行回测...")
+        results = cerebro.run()
+        strat = results[0]
 
-        # 8. 分析优化结果
-        print('\n--- 参数优化结果分析 ---')
-        parsed_results = []
-        for run in opt_results:
-            for strategy_instance in run: # 每个 run 可能包含一个策略实例列表（虽然这里只有一个）
-                params = strategy_instance.params # 获取当前运行的参数
-                analyzers = strategy_instance.analyzers # 获取分析器
-                trade_analysis = analyzers.tradeanalyzer.get_analysis()
-                sharpe_ratio = analyzers.sharpe.get_analysis()
-                drawdown = analyzers.drawdown.get_analysis()
-                returns_analysis = analyzers.returns.get_analysis()
+        print("\n回测结果分析...")
+        trade_analysis = strat.analyzers.tradeanalyzer.get_analysis()
+        sharpe_ratio = strat.analyzers.sharpe.get_analysis()
+        drawdown = strat.analyzers.drawdown.get_analysis()
+        returns = strat.analyzers.returns.get_analysis()
 
-                total_trades = trade_analysis.total.total if trade_analysis.total else 0
-                win_rate = (trade_analysis.won.total / total_trades * 100) if total_trades > 0 else 0
-                net_pnl = trade_analysis.pnl.net.total if trade_analysis.pnl else 0
+        print(f"最终投资组合价值: {cerebro.broker.getvalue():,.2f}")
+        if trade_analysis:
+             print(f"总交易次数: {trade_analysis.total.total if trade_analysis.total else 0}")
+             if trade_analysis.total and trade_analysis.total.total > 0:
+                 print(f"胜率: {(trade_analysis.won.total / trade_analysis.total.total * 100):.2f}%")
+                 print(f"总净盈利/亏损: {trade_analysis.pnl.net.total:.2f}")
+             else:
+                 print("胜率: N/A (无交易)")
+                 print("总净盈利/亏损: N/A (无交易)")
+        print(f"夏普比率: {sharpe_ratio.get('sharperatio', 'N/A')}")
+        print(f"最大回撤: {drawdown.max.drawdown:.2f}%")
+        print(f"年化收益率: {returns.get('rnorm100', 'N/A'):.2f}%")
 
-                parsed_results.append({
-                    'ema_short': params.ema_short,
-                    'ema_long': params.ema_long,
-                    'adx_period': params.adx_period,
-                    'adx_threshold': params.adx_threshold,
-                    'final_value': strategy_instance.broker.getvalue(), # 获取最终组合价值
-                    'pnl': net_pnl,
-                    'sharpe_ratio': sharpe_ratio.get('sharperatio', None),
-                    'max_drawdown': drawdown.max.drawdown,
-                    'total_trades': total_trades,
-                    'win_rate': win_rate,
-                    'annual_return': returns_analysis.get('rnorm100', None) # 获取年化收益率
-                })
-
-        # 将结果转换为 DataFrame 便于分析
-        results_df = pd.DataFrame(parsed_results)
-
-        # 按某个指标排序，例如最终价值或夏普比率
-        results_df_sorted = results_df.sort_values(by='final_value', ascending=False)
-        # 或者按夏普比率排序 (处理 None 值)
-        # results_df_sorted = results_df.sort_values(by='sharpe_ratio', ascending=False, na_position='last')
-
-
-        print("\n优化结果摘要 (按最终价值排序):")
-        print(results_df_sorted.head()) # 打印表现最好的几组参数
-
-        # 找到最优参数组合 (基于最终价值)
-        best_params = results_df_sorted.iloc[0]
-        print("\n最优参数组合 (基于最终价值):")
-        print(best_params)
-
-        # (可选) 可以将 results_df_sorted 保存到 CSV 文件
-        # results_df_sorted.to_csv('optimization_results.csv', index=False)
-
-        # --- (可选) 使用最优参数进行一次最终回测并绘图 ---
-        print("\n使用最优参数进行最终回测...")
-        final_cerebro = bt.Cerebro()
-        final_cerebro.addstrategy(EMACrossoverStrategy,
-                                  ema_short=int(best_params['ema_short']), # 从结果中获取最优参数
-                                  ema_long=int(best_params['ema_long']),
-                                  adx_period=int(best_params['adx_period']),
-                                  adx_threshold=float(best_params['adx_threshold']),
-                                  printlog=True) # 在最终回测中打开日志
-
-        # 添加数据、资金、佣金、分析器 (与优化循环内类似)
-        final_cerebro.adddata(data_feed)
-        final_cerebro.broker.setcash(100000.0)
-        final_cerebro.broker.setcommission(commission=0.01)
-        final_cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name='tradeanalyzer')
-        final_cerebro.addanalyzer(bt.analyzers.SharpeRatio, _name='sharpe', timeframe=bt.TimeFrame.Days)
-        final_cerebro.addanalyzer(bt.analyzers.DrawDown, _name='drawdown')
-
-        # 运行最终回测
-        final_results = final_cerebro.run()
-        final_strat = final_results[0]
-
-        # 打印最终回测的分析结果 (可以复用之前的打印逻辑)
-        # ... (添加打印最终分析结果的代码) ...
-        print(f'\n最终投资组合价值 (最优参数): {final_cerebro.broker.getvalue():,.2f}')
-
-        # 绘制最终回测图
         try:
-            print("\n尝试生成最终回测图表...")
-            final_cerebro.plot(style='candlestick', barup='green', bardown='red')
+            print("\n尝试生成回测图表...")
+            cerebro.plot(style='candlestick', barup='green', bardown='red')
         except Exception as e:
             print(f"\n无法生成图表: {e}")
-
 
     else:
         print(f"\n重采样后数据为空，无法进行回测或优化。")
@@ -482,9 +505,18 @@ else:
 
 
 # ===========================================================================================
-# 第二部分：策略实施与回测（续）
+# 第二部分：策略实施与回测（续） - Z-Score 策略已添加
 # ===========================================================================================
-# （您现有的策略实施代码将在此处继续，使用获取的数据 spy_data_15min）
 # ...
-# (后续可以添加均值回归策略的 Backtrader 实现)
+# (后续可以添加其他均值回归方法或卡尔曼滤波)
 # ...
+
+# ===========================================================================================
+# 第三部分：分析与讨论 (待完成)
+# ===========================================================================================
+# 比较两种策略的性能指标 (最终价值, PnL, Sharpe, Drawdown, Win Rate, Annual Return)
+# 讨论市场条件 (高/低波动性, 趋势/盘整) 对策略的影响
+#   - 趋势跟踪: 通常在明显趋势市场表现好，盘整市场可能产生假信号导致亏损。
+#   - 均值回归: 通常在盘整或均值回归明显的市场表现好，强趋势市场可能导致持续亏损 (逆势交易)。
+#   - 考虑高频数据中的跳跃 (Jumps) 对两种策略的影响。
+# ===========================================================================================
