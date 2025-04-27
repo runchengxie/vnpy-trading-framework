@@ -1,10 +1,11 @@
 import os
 import pandas as pd
+import pyarrow as pa # Import pyarrow
+import pyarrow.parquet as pq # Import parquet module
 from alpaca_trade_api.rest import REST, TimeFrame
 from dotenv import load_dotenv
 from datetime import date, timedelta
 import backtrader as bt
-import pyarrow.feather as feather
 
 # ===========================================================================================
 # 第一部分：策略实施与回测（Python 重点）
@@ -113,7 +114,7 @@ api = REST(API_KEY, SECRET_KEY, base_url=BASE_URL, api_version='v2')
 
 def fetch_historical_data(symbol, timeframe, start_date, end_date):
     """
-    使用 Alpaca API 获取给定交易品种的历史 K 线数据，并使用 Feather 格式进行缓存。
+    使用 Alpaca API 获取给定交易品种的历史 K 线数据，并使用 Parquet 格式进行缓存。
 
     Args:
         symbol (str): 交易品种代码 (例如, 'SPY')。
@@ -127,15 +128,15 @@ def fetch_historical_data(symbol, timeframe, start_date, end_date):
     # --- Cache Handling ---
     # Create a unique filename for the cache
     timeframe_str = str(timeframe).replace("TimeFrame.", "") # Get a string representation like 'Minute'
-    cache_filename = f"{symbol}_{timeframe_str}_{start_date}_{end_date}.arrow"
+    cache_filename = f"{symbol}_{timeframe_str}_{start_date}_{end_date}.parquet"
     cache_filepath = os.path.join(CACHE_DIR, cache_filename)
 
     # Check if cached file exists
     if os.path.exists(cache_filepath):
         try:
             print(f"正在从缓存加载数据: {cache_filepath}")
-            bars = feather.read_feather(cache_filepath)
-            # Feather might lose timezone info on index, re-apply if necessary
+            bars = pd.read_parquet(cache_filepath)
+            # Parquet usually handles timezone better, but double-check
             if not isinstance(bars.index, pd.DatetimeIndex):
                  bars.index = pd.to_datetime(bars.index) # Ensure index is datetime
             if bars.index.tz is None:
@@ -167,18 +168,10 @@ def fetch_historical_data(symbol, timeframe, start_date, end_date):
 
             # --- Save to Cache ---
             try:
-                # Feather requires a default index or a RangeIndex. Reset index before saving.
-                # Keep the original index in a column if needed later, though for backtrader it's usually the index.
-                # Ensure the index has a name before resetting, or handle potential errors.
-                if bars.index.name is None:
-                    bars.index.name = 'timestamp' # Assign a default name if None
-                bars_to_save = bars.reset_index()
-                feather.write_feather(bars_to_save, cache_filepath)
+                # Use df.to_parquet. No need to reset index usually.
+                # Specify the engine and potentially compression
+                bars.to_parquet(cache_filepath, engine='pyarrow', compression='snappy') # 'snappy' is a common choice
                 print(f"数据已缓存到: {cache_filepath}")
-                # Restore the index after saving if needed for the return value
-                # bars = bars_to_save.set_index('timestamp')
-                # bars.index = bars.index.tz_localize('America/New_York') # Re-apply timezone after setting index
-
             except Exception as e:
                 print(f"缓存数据时出错: {e}") # Log caching error but continue
 
@@ -200,6 +193,26 @@ class EMACrossoverStrategy(bt.Strategy):
         ('adx_threshold', 25.0), # ADX 阈值，用于过滤信号
         ('printlog', False), # 是否打印交易日志
     )
+
+    # --- 指标数学描述 ---
+    # EMA (Exponential Moving Average - 指数移动平均线):
+    # EMA 通过给予近期价格比远期价格更高的权重来计算平均价格。
+    # 计算公式通常是递归的：
+    # EMA_today = (Price_today * alpha) + (EMA_yesterday * (1 - alpha))
+    # 其中 alpha (平滑系数) = 2 / (period + 1)
+    # period 是 EMA 的周期 (例如, params.ema_short 或 params.ema_long)。
+    #
+    # ADX (Average Directional Movement Index - 平均趋向指数):
+    # ADX 用于衡量趋势的强度，而不是趋势的方向。它通常与 +DI 和 -DI 指标一起使用。
+    # 计算涉及以下步骤：
+    # 1. 计算真实波幅 (True Range, TR)。
+    # 2. 计算方向性运动 (+DM, -DM)，基于当前高/低价与前一高/低价的比较。
+    # 3. 平滑 TR, +DM, -DM (通常使用 Wilder 平滑法，周期为 params.adx_period)。
+    # 4. 计算方向性指标 (+DI, -DI)：+DI = (Smoothed +DM / Smoothed TR) * 100, -DI = (Smoothed -DM / Smoothed TR) * 100。
+    # 5. 计算趋向指数 (DX)：DX = (|(+DI) - (-DI)| / |(+DI) + (-DI)|) * 100。
+    # 6. 计算 ADX：ADX 是 DX 的平滑移动平均 (通常也使用 Wilder 平滑法，周期为 params.adx_period)。
+    # ADX 值越高，表示趋势越强 (无论上升或下降)。低于阈值 (例如 params.adx_threshold) 通常表示市场处于盘整或趋势较弱。
+    # ---
 
     def log(self, txt, dt=None, doprint=False):
         ''' 日志记录函数 '''
