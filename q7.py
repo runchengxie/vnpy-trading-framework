@@ -6,6 +6,7 @@ from alpaca_trade_api.rest import REST, TimeFrame
 from dotenv import load_dotenv
 from datetime import date, timedelta
 import backtrader as bt
+from pykalman import KalmanFilter
 
 # ===========================================================================================
 # 第一部分：策略实施与回测（Python 重点）
@@ -49,8 +50,8 @@ import backtrader as bt
 #         *   [x] 使用相同的引擎为均值回归策略实施回测。 (Done)
 #         *   [x] 计算性能指标。 (Done)
 #     *   [ ] **（可选）卡尔曼/无迹卡尔曼滤波：**
-#         *   [ ] 如果采用此方法，则对价格序列实施滤波。
-#         *   [ ] 使用滤波后的数据重新运行信号生成和回测。
+#         *   [x] 如果采用此方法，则对价格序列实施滤波。
+#         *   [x] 使用滤波后的数据重新运行信号生成和回测。
 
 # 4.  **第一部分分析与讨论：**
 #     *   [x] 比较趋势跟踪和均值回归策略的性能。 (Comparison table generated)
@@ -184,6 +185,15 @@ def fetch_historical_data(symbol, timeframe, start_date, end_date):
         print(f"获取 {symbol} 数据时出错: {e}")
         return None
 
+# --- Kalman Filter Function ---
+def apply_kalman_filter(prices):    
+    kf = KalmanFilter(transition_matrices=[1],
+                      observation_matrices=[1],
+                      initial_state_mean=prices.iloc[0],
+                      n_dim_obs=1)
+    state_means, _ = kf.filter(prices.values)
+    return pd.Series(state_means.flatten(), index=prices.index)
+
 # --- Backtrader Strategy Definition ---
 class EMACrossoverStrategy(bt.Strategy):
     params = (
@@ -191,6 +201,7 @@ class EMACrossoverStrategy(bt.Strategy):
         ('ema_long', 30),  # 长周期 EMA
         ('adx_period', 14), # ADX 周期
         ('adx_threshold', 25.0), # ADX 阈值，用于过滤信号
+        ('use_filtered_price', False), # 是否使用滤波后的价格
         ('printlog', False), # 是否打印交易日志
     )
 
@@ -222,7 +233,10 @@ class EMACrossoverStrategy(bt.Strategy):
 
     def __init__(self):
         # 保持对收盘价序列的引用
-        self.dataclose = self.datas[0].close
+        if self.params.use_filtered_price:
+            self.dataclose = self.datas[0].filtered_close
+        else:
+            self.dataclose = self.datas[0].close
         # Keep references to high, low as well for ADX
         self.datahigh = self.datas[0].high
         self.datalow = self.datas[0].low
@@ -312,6 +326,7 @@ class MeanReversionZScoreStrategy(bt.Strategy):
         ('zscore_upper', 2.0),   # Z-score 卖出阈值 (做空)
         ('zscore_lower', -2.0),  # Z-score 买入阈值 (做多)
         ('exit_threshold', 0.0), # Z-score 回归到均值附近时的退出阈值
+        ('use_filtered_price', False), # 是否使用滤波后的价格
         ('printlog', False),     # 是否打印交易日志
     )
 
@@ -340,7 +355,10 @@ class MeanReversionZScoreStrategy(bt.Strategy):
             print(f'{dt.isoformat()}, {txt}')
 
     def __init__(self):
-        self.dataclose = self.datas[0].close
+        if self.params.use_filtered_price:
+            self.dataclose = self.datas[0].filtered_close
+        else:
+            self.dataclose = self.datas[0].close
         self.order = None
         self.buyprice = None
         self.buycomm = None
@@ -420,6 +438,7 @@ class CustomRatioStrategy(bt.Strategy):
         ('buy_threshold', 0.98), # 买入阈值 (价格低于长期均值的 2%)
         ('sell_threshold', 1.02),# 卖出阈值 (价格高于长期均值的 2%)
         ('exit_threshold', 1.0), # 回归到均值附近时的退出阈值
+        ('use_filtered_price', False), # 是否使用滤波后的价格
         ('printlog', False),     # 是否打印交易日志
     )
 
@@ -447,7 +466,10 @@ class CustomRatioStrategy(bt.Strategy):
             print(f'{dt.isoformat()}, {txt}')
 
     def __init__(self):
-        self.dataclose = self.datas[0].close
+        if self.params.use_filtered_price:
+            self.dataclose = self.datas[0].filtered_close
+        else:
+            self.dataclose = self.datas[0].close
         self.order = None
         self.buyprice = None
         self.buycomm = None
@@ -517,6 +539,13 @@ class CustomRatioStrategy(bt.Strategy):
                  self.log(f'CLOSE SHORT (Ratio <= Exit Thr), Close: {self.dataclose[0]:.2f}, Ratio: {self.current_ratio:.4f}')
                  self.order = self.close() # 平空仓
 
+# --- Custom PandasData Class ---
+class PandasDataFiltered(bt.feeds.PandasData):
+    lines = ('filtered_close',)
+    params = (
+        ('filtered_close', 7),
+    )
+    datafields = bt.feeds.PandasData.datafields + ['filtered_close']
 
 # --- 使用示例 ---
 # 定义参数（前 5 行）：\n{spy_data_15min.head()}")
@@ -552,6 +581,10 @@ if spy_data_1min is not None and not spy_data_1min.empty:
     resample_freq = f'{time_frame_value}T'
     spy_data_resampled = spy_data_1min.resample(resample_freq).agg(agg_dict).dropna()
 
+    # --- Apply Kalman Filter ---
+    if not spy_data_resampled.empty:
+        spy_data_resampled['filtered_close'] = apply_kalman_filter(spy_data_resampled['close'])
+
     # --- Backtrader 设置和运行 ---
     if not spy_data_resampled.empty:
         print(f"\n重采样后的 {time_frame_value} 分钟数据样本（前 5 行）：\n{spy_data_resampled.head()}")
@@ -571,8 +604,19 @@ if spy_data_1min is not None and not spy_data_1min.empty:
         print("\n开始均值回归策略 (Z-Score) 回测...")
         strategy_names.append('Mean Reversion (Z-Score)')
         cerebro_mr = bt.Cerebro()
-        cerebro_mr.adddata(data_feed) # Add data feed
-        cerebro_mr.addstrategy(MeanReversionZScoreStrategy, zscore_period=20, zscore_upper=2.0, zscore_lower=-2.0, exit_threshold=0.0, printlog=False) # Set printlog=False for cleaner output
+        data_feed_mr = PandasDataFiltered(
+            dataname=spy_data_resampled,
+            datetime=None,
+            open='open',
+            high='high',
+            low='low',
+            close='close',
+            volume='volume',
+            openinterest='openinterest',
+            filtered_close='filtered_close'
+        )
+        cerebro_mr.adddata(data_feed_mr)
+        cerebro_mr.addstrategy(MeanReversionZScoreStrategy, zscore_period=20, zscore_upper=2.0, zscore_lower=-2.0, exit_threshold=0.0, use_filtered_price=True, printlog=False) # Set printlog=False for cleaner output
         cerebro_mr.broker.setcash(100000.0)
         cerebro_mr.broker.setcommission(commission=0.01) # Example commission
         cerebro_mr.addanalyzer(bt.analyzers.TradeAnalyzer, _name='tradeanalyzer')
@@ -607,7 +651,7 @@ if spy_data_1min is not None and not spy_data_1min.empty:
         data_feed_tf = bt.feeds.PandasData(dataname=spy_data_resampled, datetime=None, open='open', high='high', low='low', close='close', volume='volume', openinterest='openinterest')
         cerebro_tf = bt.Cerebro()
         cerebro_tf.adddata(data_feed_tf) # Add data feed
-        cerebro_tf.addstrategy(EMACrossoverStrategy, ema_short=10, ema_long=30, adx_period=14, adx_threshold=25.0, printlog=False) # Set printlog=False
+        cerebro_tf.addstrategy(EMACrossoverStrategy, ema_short=10, ema_long=30, adx_period=14, adx_threshold=25.0, use_filtered_price=False, printlog=False) # Set printlog=False
         cerebro_tf.broker.setcash(100000.0)
         cerebro_tf.broker.setcommission(commission=0.01) # Example commission
         cerebro_tf.addanalyzer(bt.analyzers.TradeAnalyzer, _name='tradeanalyzer')
@@ -642,7 +686,7 @@ if spy_data_1min is not None and not spy_data_1min.empty:
         data_feed_cr = bt.feeds.PandasData(dataname=spy_data_resampled, datetime=None, open='open', high='high', low='low', close='close', volume='volume', openinterest='openinterest')
         cerebro_cr = bt.Cerebro()
         cerebro_cr.adddata(data_feed_cr) # Add data feed
-        cerebro_cr.addstrategy(CustomRatioStrategy, long_ma_period=50, buy_threshold=0.98, sell_threshold=1.02, exit_threshold=1.0, printlog=False) # Set printlog=False
+        cerebro_cr.addstrategy(CustomRatioStrategy, long_ma_period=50, buy_threshold=0.98, sell_threshold=1.02, exit_threshold=1.0, use_filtered_price=False, printlog=False) # Set printlog=False
         cerebro_cr.broker.setcash(100000.0)
         cerebro_cr.broker.setcommission(commission=0.01) # Example commission
         cerebro_cr.addanalyzer(bt.analyzers.TradeAnalyzer, _name='tradeanalyzer')
@@ -730,22 +774,3 @@ if spy_data_1min is not None and not spy_data_1min.empty:
 
 else:
     print(f"\n无法获取或处理 {ticker} 在 {start_date_str} 到 {end_date_str} 的数据。")
-
-
-# ===========================================================================================
-# 第二部分：策略实施与回测（续） - Z-Score 策略已添加
-# ===========================================================================================
-# ...
-# (后续可以添加其他均值回归方法或卡尔曼滤波)
-# ...
-
-# ===========================================================================================
-# 第三部分：分析与讨论 (待完成)
-# ===========================================================================================
-# 比较三种策略的性能指标 (最终价值, PnL, Sharpe, Drawdown, Win Rate, Annual Return)
-# 讨论市场条件 (高/低波动性, 趋势/盘整) 对策略的影响
-#   - 趋势跟踪: 通常在明显趋势市场表现好，盘整市场可能产生假信号导致亏损。
-#   - 均值回归: 通常在盘整或均值回归明显的市场表现好，强趋势市场可能导致持续亏损 (逆势交易)。
-#   - 自定义比率: 结合均值回归和趋势跟踪的特点，适用于特定市场条件。
-#   - 考虑高频数据中的跳跃 (Jumps) 对三种策略的影响。
-# ===========================================================================================
