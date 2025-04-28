@@ -9,6 +9,7 @@ dependencies:
   - matplotlib
   - pyarrow
   - pykalman
+  - pyyaml # Added for reading config.yaml
   - pip
   - pip:
     - alpaca-trade-api

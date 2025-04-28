@@ -1,0 +1,75 @@
+# config.yaml
+alpaca:
+  api_key_env: APCA_API_KEY_ID
+  secret_key_env: APCA_API_SECRET_KEY
+  base_url_env: ALPACA_BASE_URL
+  default_base_url: https://paper-api.alpaca.markets
+
+data:
+  ticker: SPY
+  time_frame_value: 15 # minutes
+  time_frame_unit: Minute # Corresponds to Alpaca TimeFrame.Minute
+  start_date: "2023-01-01"
+  end_date: "2023-12-31"
+  cache_dir: cache/ # Make sure this directory exists or is created by data_utils
+  resample_freq_template: '{time_frame_value}T' # Template for pandas resample
+
+backtest:
+  initial_cash: 100000.0
+  commission: 0.01
+  max_cpus: 1 # For optimization
+
+strategies:
+  mean_reversion:
+    name: 'Mean Reversion (Z-Score)'
+    class: MeanReversionZScoreStrategy
+    use_filtered_data: True
+    # Single run parameters
+    params:
+      zscore_period: 20
+      zscore_upper: 2.0
+      zscore_lower: -2.0
+      exit_threshold: 0.0
+      use_filtered_price: True # Passed to strategy __init__
+      printlog: False
+    # Optimization parameter names (must match strategy params/optimization ranges in strategy class)
+    opt_param_names: ['zscore_period', 'zscore_upper', 'zscore_lower', 'exit_threshold']
+  ema_crossover:
+    name: 'Trend Following (EMA+ADX)'
+    class: EMACrossoverStrategy
+    use_filtered_data: False
+    # Single run parameters
+    params:
+      ema_short: 10
+      ema_long: 30
+      adx_period: 14
+      adx_threshold: 25.0
+      use_filtered_price: False # Passed to strategy __init__
+      printlog: False
+    # Optimization parameter names
+    opt_param_names: ['ema_short', 'ema_long', 'adx_period', 'adx_threshold']
+  custom_ratio:
+    name: 'Custom Ratio Strategy'
+    class: CustomRatioStrategy
+    use_filtered_data: False
+    # Single run parameters
+    params:
+      long_ma_period: 50
+      buy_threshold: 0.98
+      sell_threshold: 1.02
+      exit_threshold: 1.0
+      use_filtered_price: False # Passed to strategy __init__
+      printlog: False
+    # Optimization parameter names
+    opt_param_names: ['long_ma_period', 'buy_threshold', 'sell_threshold', 'exit_threshold']
+
+logging:
+  level: INFO # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+  datefmt: '%Y-%m-%d %H:%M:%S'
+
+plotting:
+  enabled: True # Set to False to disable plotting
+  style: 'candlestick'
+  barup: 'green'
+  bardown: 'red'
