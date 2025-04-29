@@ -5,9 +5,13 @@ import pyarrow.parquet as pq
 from alpaca_trade_api.rest import REST, TimeFrame
 from datetime import date, timedelta
 from pykalman import KalmanFilter
+import logging # Add logging import
+
+# --- Logging Setup ---
+logger = logging.getLogger(__name__) # Create logger for this module
+# --- End Logging Setup ---
 
 # Define cache directory relative to this file's location or use an absolute path
-# For simplicity, assuming it's run from the project root where 'cache' exists
 CACHE_DIR = 'cache'
 os.makedirs(CACHE_DIR, exist_ok=True) # Create cache directory if it doesn't exist
 
@@ -35,14 +39,14 @@ def get_last_trading_day(api_instance, target_date_str):
         current_dt = target_dt
         while current_dt >= date.fromisoformat(calendar_start):
             if current_dt in trading_days:
-                print(f"目标日期 {target_date_str} 的交易日确定为: {current_dt.strftime('%Y-%m-%d')}")
+                logger.info(f"目标日期 {target_date_str} 的交易日确定为: {current_dt.strftime('%Y-%m-%d')}") # Use logger
                 return current_dt.strftime('%Y-%m-%d')
             current_dt -= timedelta(days=1)
 
-        print(f"错误：在 {calendar_start} 和 {target_date_str} 之间找不到交易日。")
+        logger.error(f"错误：在 {calendar_start} 和 {target_date_str} 之间找不到交易日。") # Use logger
         return None
     except Exception as e:
-        print(f"获取交易日历时出错: {e}")
+        logger.error(f"获取交易日历时出错: {e}") # Use logger
         return None
 
 
@@ -69,7 +73,7 @@ def fetch_historical_data(api, symbol, timeframe, start_date, end_date):
     # Check if cached file exists
     if os.path.exists(cache_filepath):
         try:
-            print(f"正在从缓存加载数据: {cache_filepath}")
+            logger.info(f"正在从缓存加载数据: {cache_filepath}") # Use logger
             bars = pd.read_parquet(cache_filepath)
             # Parquet usually handles timezone better, but double-check
             if not isinstance(bars.index, pd.DatetimeIndex):
@@ -77,15 +81,18 @@ def fetch_historical_data(api, symbol, timeframe, start_date, end_date):
             if bars.index.tz is None:
                  bars.index = bars.index.tz_localize('UTC') # Assume UTC if no timezone
             bars.index = bars.index.tz_convert('America/New_York') # Convert to desired timezone
-            print(f"成功从缓存加载 {len(bars)} 个数据点。")
+            # Filter again to ensure strict date range after loading from cache
+            bars = bars[(bars.index >= pd.Timestamp(start_date, tz='America/New_York')) &
+                        (bars.index <= pd.Timestamp(end_date, tz='America/New_York') + timedelta(days=1))]
+            logger.info(f"成功从缓存加载 {len(bars)} 个数据点。") # Use logger
             return bars
         except Exception as e:
-            print(f"从缓存加载数据时出错: {e}. 将尝试从 API 获取。")
+            logger.warning(f"从缓存加载数据时出错: {e}. 将尝试从 API 获取。") # Use logger
             # If loading fails, proceed to fetch from API
 
     # --- Fetch from API (if not cached or cache load failed) ---
     try:
-        print(f"正在从 API 获取 {symbol} 从 {start_date} 到 {end_date} 的 {timeframe} 数据...")
+        logger.info(f"正在从 API 获取 {symbol} 从 {start_date} 到 {end_date} 的 {timeframe} 数据...") # Use logger
         # Note: Alpaca's get_bars returns data in UTC.
         start_dt_iso = pd.Timestamp(start_date, tz='America/New_York').tz_convert('UTC').isoformat()
         end_dt_iso = (pd.Timestamp(end_date, tz='America/New_York') + timedelta(days=1) - timedelta(seconds=1)).tz_convert('UTC').isoformat()
@@ -99,24 +106,24 @@ def fetch_historical_data(api, symbol, timeframe, start_date, end_date):
             bars = bars[(bars.index >= pd.Timestamp(start_date, tz='America/New_York')) &
                         (bars.index <= pd.Timestamp(end_date, tz='America/New_York') + timedelta(days=1))]
 
-            print(f"成功从 API 获取 {len(bars)} 个数据点。")
+            logger.info(f"成功从 API 获取 {len(bars)} 个数据点。") # Use logger
 
             # --- Save to Cache ---
             try:
                 # Use df.to_parquet. No need to reset index usually.
                 # Specify the engine and potentially compression
                 bars.to_parquet(cache_filepath, engine='pyarrow', compression='snappy') # 'snappy' is a common choice
-                print(f"数据已缓存到: {cache_filepath}")
+                logger.info(f"数据已缓存到: {cache_filepath}") # Use logger
             except Exception as e:
-                print(f"缓存数据时出错: {e}") # Log caching error but continue
+                logger.warning(f"缓存数据时出错: {e}") # Use logger - Log caching error but continue
 
             return bars
         else:
-            print(f"未获取到 {symbol} 的数据。")
+            logger.warning(f"未获取到 {symbol} 的数据。") # Use logger
             return None # Return None if no data fetched
 
     except Exception as e:
-        print(f"获取 {symbol} 数据时出错: {e}")
+        logger.error(f"获取 {symbol} 数据时出错: {e}") # Use logger
         return None
 
 # --- Kalman Filter Function ---

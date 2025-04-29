@@ -4,6 +4,7 @@ from alpaca_trade_api.rest import REST, TimeFrame
 from dotenv import load_dotenv
 from datetime import timedelta
 import backtrader as bt
+import logging
 
 # Import functions and classes from the new modules
 from data_utils import fetch_historical_data, apply_kalman_filter, get_last_trading_day
@@ -13,6 +14,13 @@ from backtest_utils import analyze_optimization_results
 # 从 .env 文件加载环境变量
 load_dotenv()
 
+# --- Logging Setup ---
+logging.basicConfig(level=logging.INFO,
+                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                    datefmt='%Y-%m-%d %H:%M:%S')
+logger = logging.getLogger(__name__)
+# --- End Logging Setup ---
+
 # Alpaca API 凭证
 API_KEY = os.getenv('APCA_API_KEY_ID')
 SECRET_KEY = os.getenv('APCA_API_SECRET_KEY')
@@ -20,8 +28,8 @@ BASE_URL = os.getenv('ALPACA_BASE_URL', 'https://paper-api.alpaca.markets') # �
 
 # 检查 API 密钥是否已加载
 if not API_KEY or not SECRET_KEY:
-    print("错误：在环境变量中未找到 Alpaca API 密钥或秘密密钥。")
-    print("请设置 APCA_API_KEY_ID 和 APCA_API_SECRET_KEY。")
+    logger.error("错误：在环境变量中未找到 Alpaca API 密钥或秘密密钥。")
+    logger.error("请设置 APCA_API_KEY_ID 和 APCA_API_SECRET_KEY。")
     # exit() # 或者适当地处理错误
 
 # 初始化 Alpaca API
@@ -35,15 +43,17 @@ start_date_str = "2023-01-01"
 end_date_str = "2023-12-31"
 
 # 获取该时间段的 1 分钟数据用于重采样
-print(f"正在获取 {ticker} 从 {start_date_str} 到 {end_date_str} 的 1 分钟数据...")
+logger.info(f"正在获取 {ticker} 从 {start_date_str} 到 {end_date_str} 的 1 分钟数据...")
 # Pass the initialized api object to the function
 spy_data_1min = fetch_historical_data(api, ticker, TimeFrame.Minute, start_date_str, end_date_str)
 
 if spy_data_1min is not None and not spy_data_1min.empty:
-    print(f"\n原始 1 分钟数据样本（前 5 行）：\n{spy_data_1min.head()}")
-    print(f"\n原始 1 分钟数据样本（后 5 行）：\n{spy_data_1min.tail()}")
-    print(f"\n数据信息：\n")
-    spy_data_1min.info()
+    logger.info(f"\n原始 1 分钟数据样本（前 5 行）：\n{spy_data_1min.head()}")
+    logger.info(f"\n原始 1 分钟数据样本（后 5 行）：\n{spy_data_1min.tail()}")
+    from io import StringIO
+    buffer = StringIO()
+    spy_data_1min.info(buf=buffer)
+    logger.info(f"\n数据信息：\n{buffer.getvalue()}")
 
     # 重采样到目标频率
     agg_dict = {
@@ -57,7 +67,7 @@ if spy_data_1min is not None and not spy_data_1min.empty:
     }
     agg_dict = {k: v for k, v in agg_dict.items() if k in spy_data_1min.columns}
 
-    print(f"\n正在重采样到 {time_frame_value} 分钟...")
+    logger.info(f"\n正在重采样到 {time_frame_value} 分钟...")
     resample_freq = f'{time_frame_value}T'
     spy_data_resampled = spy_data_1min.resample(resample_freq).agg(agg_dict).dropna()
 
@@ -82,33 +92,31 @@ if spy_data_1min is not None and not spy_data_1min.empty:
         cerebro.addanalyzer(bt.analyzers.Returns, _name='returns')
 
         if optimize:
-            print(f"\n开始 {strategy_name} 参数优化...")
+            logger.info(f"\n开始 {strategy_name} 参数优化...")
             # Add strategy for optimization (parameters defined in strategy class)
             cerebro.optstrategy(strategy_cls, use_filtered_price=use_filtered_price, printlog=printlog)
-            print(f"\n正在运行 {strategy_name} 参数优化...")
+            logger.info(f"\n正在运行 {strategy_name} 参数优化...")
             optimized_results = cerebro.run(maxcpus=maxcpus)
-            print(f"\n{strategy_name} 参数优化完成。")
+            logger.info(f"\n{strategy_name} 参数优化完成。")
 
-            print(f"\n分析 {strategy_name} 优化结果...")
+            logger.info(f"\n分析 {strategy_name} 优化结果...")
             if opt_param_names is None:
-                print(f"警告: 未提供 {strategy_name} 的 opt_param_names，无法分析优化结果。")
+                logger.warning(f"警告: 未提供 {strategy_name} 的 opt_param_names，无法分析优化结果。")
                 return None
-            print(f"{strategy_name} 优化参数: {opt_param_names}")
+            logger.info(f"{strategy_name} 优化参数: {opt_param_names}")
             opt_df = analyze_optimization_results(optimized_results, opt_param_names)
 
-            print(f"\n{strategy_name} 优化结果 (按 Final Value 排序 Top 10):")
-            print(opt_df.sort_values(by='Final Value', ascending=False).head(10))
-            print(f"\n{strategy_name} 优化结果 (按 Sharpe Ratio 排序 Top 10 - 忽略 None):")
-            print(opt_df.dropna(subset=['Sharpe Ratio']).sort_values(by='Sharpe Ratio', ascending=False).head(10))
+            logger.info(f"\n{strategy_name} 优化结果 (按 Final Value 排序 Top 10):\n{opt_df.sort_values(by='Final Value', ascending=False).head(10).to_string()}")
+            logger.info(f"\n{strategy_name} 优化结果 (按 Sharpe Ratio 排序 Top 10 - 忽略 None):\n{opt_df.dropna(subset=['Sharpe Ratio']).sort_values(by='Sharpe Ratio', ascending=False).head(10).to_string()}")
             return opt_df # Return the optimization results dataframe
         else:
-            print(f"\n开始 {strategy_name} 单次运行回测...")
+            logger.info(f"\n开始 {strategy_name} 单次运行回测...")
             # Add strategy for single run with specific parameters
             cerebro.addstrategy(strategy_cls, **single_run_params, use_filtered_price=use_filtered_price, printlog=printlog)
-            print(f"\n正在运行 {strategy_name} 单次回测...")
+            logger.info(f"\n正在运行 {strategy_name} 单次回测...")
             results = cerebro.run()
             strat = results[0]
-            print(f"\n{strategy_name} 单次回测结果分析...")
+            logger.info(f"\n{strategy_name} 单次回测结果分析...")
 
             trade_analysis = strat.analyzers.tradeanalyzer.get_analysis()
             sharpe_ratio = strat.analyzers.sharpe.get_analysis()
@@ -132,9 +140,10 @@ if spy_data_1min is not None and not spy_data_1min.empty:
 
     # --- Backtrader 设置和运行 ---
     if not spy_data_resampled.empty:
-        print(f"\n重采样后的 {time_frame_value} 分钟数据样本（前 5 行）：\n{spy_data_resampled.head()}")
-        print(f"\n重采样后的数据信息：\n")
-        spy_data_resampled.info()
+        logger.info(f"\n重采样后的 {time_frame_value} 分钟数据样本（前 5 行）：\n{spy_data_resampled.head()}")
+        buffer_resampled = StringIO()
+        spy_data_resampled.info(buf=buffer_resampled)
+        logger.info(f"\n重采样后的数据信息：\n{buffer_resampled.getvalue()}")
 
         # --- 准备数据 Feed ---
         if 'openinterest' not in spy_data_resampled.columns:
@@ -280,14 +289,14 @@ if spy_data_1min is not None and not spy_data_1min.empty:
         )
 
         # --- 打印结果比较 (仅包含单次运行结果) ---
-        print("\n" + "="*30 + " 策略性能比较 (单次运行) " + "="*30)
+        logger.info("\n" + "="*30 + " 策略性能比较 (单次运行) " + "="*30)
         header = f"{'Metric':<25}"
         separator = "-" * 25
         for name in strategy_names:
             header += f" | {name:<30}"
             separator += "-|-" + "-" * 30
-        print(header)
-        print(separator)
+        logger.info(header)
+        logger.info(separator)
 
         # Assuming all strategies produce the same metrics
         if strategy_names:
@@ -296,25 +305,24 @@ if spy_data_1min is not None and not spy_data_1min.empty:
                 line = f"{metric:<25}"
                 for name in strategy_names:
                     val = results_comparison[name].get(metric, 'N/A') # Use .get for safety
-                    # Format numbers for better readability
                     if isinstance(val, (int, float)):
                         val_str = f"{val:,.2f}"
                     else:
                         val_str = str(val)
                     line += f" | {val_str:<30}"
-                print(line)
-        print(separator.replace("-", "=")) # Use '=' for the bottom separator
+                logger.info(line)
+        logger.info(separator.replace("-", "="))
 
         # --- (可选) 绘制图表 (仅绘制单次运行结果) ---
         for name, cerebro_instance in cerebro_instances.items():
             try:
-                print(f"\n尝试生成 {name} 策略图表 (单次运行)...")
+                logger.info(f"\n尝试生成 {name} 策略图表 (单次运行)...")
                 cerebro_instance.plot(style='candlestick', barup='green', bardown='red')
             except Exception as e:
-                print(f"\n无法生成 {name} 图表: {e}")
+                logger.error(f"\n无法生成 {name} 图表: {e}")
 
     else:
-        print(f"\n重采样后数据为空，无法进行回测或优化。")
+        logger.warning(f"\n重采样后数据为空，无法进行回测或优化。")
 
 else:
-    print(f"\n无法获取或处理 {ticker} 在 {start_date_str} 到 {end_date_str} 的数据。")
+    logger.error(f"\n无法获取或处理 {ticker} 在 {start_date_str} 到 {end_date_str} 的数据。")
