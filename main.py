@@ -5,9 +5,11 @@ from dotenv import load_dotenv
 from datetime import timedelta
 import backtrader as bt
 import logging
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 # Import functions and classes from the new modules
-from data_utils import fetch_historical_data, apply_kalman_filter, get_last_trading_day
+from data_utils import fetch_historical_data, apply_kalman_filter, get_last_trading_day, add_technical_indicators
 from strategies import EMACrossoverStrategy, MeanReversionZScoreStrategy, CustomRatioStrategy, PandasDataFiltered
 from backtest_utils import analyze_optimization_results
 
@@ -16,7 +18,7 @@ load_dotenv()
 
 # --- Logging Setup ---
 logging.basicConfig(level=logging.INFO,
-                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                    format='%(asctime)s - %(name%s - %(levelname)s - %(message)s',
                     datefmt='%Y-%m-%d %H:%M:%S')
 logger = logging.getLogger(__name__)
 # --- End Logging Setup ---
@@ -34,6 +36,20 @@ if not API_KEY or not SECRET_KEY:
 
 # 初始化 Alpaca API
 api = REST(API_KEY, SECRET_KEY, base_url=BASE_URL, api_version='v2')
+
+# --- 添加重试逻辑 ---
+retry_strategy = Retry(
+    total=5,                  # 最多重试 5 次
+    backoff_factor=1,         # 指数退避：1s, 2s, 4s…
+    status_forcelist=[429, 500, 502, 503, 504],  # 针对这些状态码重试
+    allowed_methods=["GET"]   # 只重试 GET 请求
+)
+adapter = HTTPAdapter(max_retries=retry_strategy)
+
+# api 是你的 REST 客户端实例
+api._session.mount("https://", adapter)
+api._session.mount("http://", adapter)
+# --- 重试逻辑结束 ---
 
 # 定义参数
 ticker = 'SPY' # 标普 500 ETF
@@ -74,6 +90,21 @@ if spy_data_1min is not None and not spy_data_1min.empty:
     # --- Apply Kalman Filter ---
     if not spy_data_resampled.empty:
         spy_data_resampled['filtered_close'] = apply_kalman_filter(spy_data_resampled['close'])
+
+        # --- Add Technical Indicators (including SMA for CustomRatioStrategy) ---
+        logger.info("Adding technical indicators...")
+        # Define which indicators to add (example)
+        # indicators_to_add = {
+        #     'sma': [50], # Add 50-period Simple Moving Average
+        #     # 'ema': [12, 26], # Add 12 and 26-period Exponential Moving Averages
+        #     # 'adx': [14] # Add 14-period Average Directional Index
+        # }
+
+        # Add technical indicators
+        spy_data_resampled = add_technical_indicators(spy_data_resampled)
+        logger.info("Technical indicators added.")
+        # Log columns to verify sma_50 exists
+        logger.info(f"Columns after adding indicators: {spy_data_resampled.columns.tolist()}")
 
     # --- Helper Function for Backtesting and Optimization ---
     def run_backtest(strategy_cls, data_feed, initial_cash, commission,
@@ -148,11 +179,11 @@ if spy_data_1min is not None and not spy_data_1min.empty:
         # --- 准备数据 Feed ---
         if 'openinterest' not in spy_data_resampled.columns:
             spy_data_resampled['openinterest'] = 0
-        # Base data feed (used for non-filtered strategies)
+        # Base data feed (used for non-filtered strategies without extra indicators)
         data_feed_base = bt.feeds.PandasData(dataname=spy_data_resampled, datetime=None, open='open', high='high', low='low', close='close', volume='volume', openinterest='openinterest')
-        # Data feed with filtered close (used for strategies needing it)
+        # Data feed with filtered close and potentially other indicators like sma_50
         data_feed_filtered = PandasDataFiltered(
-            dataname=spy_data_resampled,
+            dataname=spy_data_resampled, # This DataFrame now contains 'sma_50'
             datetime=None,
             open='open',
             high='high',
@@ -214,9 +245,12 @@ if spy_data_1min is not None and not spy_data_1min.empty:
         strategy_name_tf = 'Trend Following (EMA+ADX)'
         strategy_names.append(strategy_name_tf)
         tf_single_run_params = {
-            'ema_short': 10, 'ema_long': 30, 'adx_period': 14,
+            'ema_short': 10, # Matches the updated strategy param name
+            'ema_long': 30,  # Matches the updated strategy param name
+            'adx_period': 14,
             'adx_threshold': 25.0
         }
+        # Update opt_param_names to match the strategy params
         tf_opt_param_names = ['ema_short', 'ema_long', 'adx_period', 'adx_threshold']
 
         # Single Run
@@ -242,7 +276,7 @@ if spy_data_1min is not None and not spy_data_1min.empty:
             commission=commission,
             single_run_params={}, # Not used in optimization
             optimize=True,
-            opt_param_names=tf_opt_param_names,
+            opt_param_names=tf_opt_param_names, # Pass the updated names
             use_filtered_price=False,
             printlog=False,
             strategy_name=strategy_name_tf,
@@ -261,12 +295,12 @@ if spy_data_1min is not None and not spy_data_1min.empty:
         # Single Run
         cerebro_cr, results_cr = run_backtest(
             CustomRatioStrategy,
-            data_feed=data_feed_base, # Use base data
+            data_feed=data_feed_filtered, # Use filtered feed which has sma_50
             initial_cash=initial_cash,
             commission=commission,
             single_run_params=cr_single_run_params,
             optimize=False,
-            use_filtered_price=False,
+            use_filtered_price=False, # Strategy might use regular close or filtered, adjust if needed
             printlog=False,
             strategy_name=strategy_name_cr
         )
@@ -276,13 +310,13 @@ if spy_data_1min is not None and not spy_data_1min.empty:
         # Optimization
         cr_opt_df = run_backtest(
             CustomRatioStrategy,
-            data_feed=data_feed_base, # Use base data
+            data_feed=data_feed_filtered, # Use filtered feed which has sma_50
             initial_cash=initial_cash,
             commission=commission,
             single_run_params={}, # Not used in optimization
             optimize=True,
             opt_param_names=cr_opt_param_names,
-            use_filtered_price=False,
+            use_filtered_price=False, # Adjust if needed
             printlog=False,
             strategy_name=strategy_name_cr,
             maxcpus=maxcpus_opt

@@ -6,6 +6,13 @@ from alpaca_trade_api.rest import REST, TimeFrame
 from datetime import date, timedelta
 from pykalman import KalmanFilter
 import logging # Add logging import
+import numpy as np
+
+# Monkey-patch for pandas_ta compatibility with NumPy ≥1.25
+if not hasattr(np, "NaN"):
+    np.NaN = np.nan
+
+import pandas_ta as ta # Add pandas_ta import
 
 # --- Logging Setup ---
 logger = logging.getLogger(__name__) # Create logger for this module
@@ -108,6 +115,9 @@ def fetch_historical_data(api, symbol, timeframe, start_date, end_date):
 
             logger.info(f"成功从 API 获取 {len(bars)} 个数据点。") # Use logger
 
+            # --- Add Technical Indicators ---
+            bars = add_technical_indicators(bars.copy()) # Add indicators here
+
             # --- Save to Cache ---
             try:
                 # Use df.to_parquet. No need to reset index usually.
@@ -134,3 +144,42 @@ def apply_kalman_filter(prices):
                       n_dim_obs=1)
     state_means, _ = kf.filter(prices.values)
     return pd.Series(state_means.flatten(), index=prices.index)
+
+# --- Function to add technical indicators ---
+def add_technical_indicators(df):
+    """
+    Calculates common technical indicators using pandas_ta and adds them as columns.
+
+    Args:
+        df (pd.DataFrame): DataFrame with OHLCV data, index must be DatetimeIndex.
+
+    Returns:
+        pd.DataFrame: DataFrame with added indicator columns.
+    """
+    logger.info("Calculating and adding technical indicators...")
+    try:
+        # Ensure index is datetime
+        if not isinstance(df.index, pd.DatetimeIndex):
+            df.index = pd.to_datetime(df.index)
+
+        # Calculate indicators - adjust periods as needed
+        df.ta.ema(length=12, append=True, col_names=('ema_12',))
+        df.ta.ema(length=26, append=True, col_names=('ema_26',))
+        df.ta.ema(length=50, append=True, col_names=('ema_50',)) # Added for potential use
+        df.ta.sma(length=20, append=True, col_names=('sma_20',))
+        df.ta.sma(length=50, append=True, col_names=('sma_50',))
+        df.ta.adx(length=14, append=True, col_names=('adx_14', 'adx_14_dmp', 'adx_14_dmn'))
+        # Calculate Std Dev for Z-Score components
+        df.ta.stdev(length=20, append=True, col_names=('stdev_20',))
+        df.ta.stdev(length=30, append=True, col_names=('stdev_30',))
+
+
+        # Add more indicators as needed (e.g., RSI, MACD)
+        # df.ta.rsi(length=14, append=True, col_names=('rsi_14',))
+        # df.ta.macd(append=True, col_names=('macd', 'macd_h', 'macd_s'))
+
+        logger.info("Finished adding technical indicators.")
+    except Exception as e:
+        logger.error(f"Error calculating technical indicators: {e}")
+        # Return original df if calculation fails
+    return df

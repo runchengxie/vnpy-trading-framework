@@ -5,12 +5,14 @@ channels:
 dependencies:
   - python=3.10
   - pandas
+  - numpy
   - python-dotenv
   - matplotlib
   - pyarrow
   - pykalman
-  - pyyaml # Added for reading config.yaml
+  - pyyaml 
   - pip
   - pip:
     - alpaca-trade-api
     - backtrader
+    - pandas-ta
