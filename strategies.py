@@ -38,8 +38,6 @@ class EMACrossoverStrategy(bt.Strategy):
 
         self.crossover = bt.indicators.CrossOver(self.ema_short, self.ema_long)
 
-        self.adx_threshold_val = self.params.adx_threshold[0] if hasattr(self.params.adx_threshold, '__getitem__') else self.params.adx_threshold
-
         self.order = None
         self.buyprice = None
         self.buycomm = None
@@ -77,17 +75,19 @@ class EMACrossoverStrategy(bt.Strategy):
         if self.order:
             return
 
-        if pd.isna(self.ema_short[0]) or pd.isna(self.ema_long[0]) or pd.isna(self.adx[0]):
+        if pd.isna(self.ema_short[0]) or pd.isna(self.ema_long[0]) or pd.isna(self.adx.adx[0]):
             return
 
+        adx_threshold = self.p.adx_threshold
+
         if not self.position:
-            if self.crossover > 0 and self.adx[0] > self.adx_threshold_val:
-                self.log(f'BUY CREATE, Close: {self.dataclose[0]:.2f}, ADX: {self.adx[0]:.2f}')
+            if self.crossover > 0 and self.adx.adx[0] > adx_threshold:
+                self.log(f'BUY CREATE, Close: {self.dataclose[0]:.2f}, ADX: {self.adx.adx[0]:.2f}')
                 self.order = self.buy()
 
         else:
             if self.crossover < 0:
-                self.log(f'SELL CREATE (Exit), Close: {self.dataclose[0]:.2f}, ADX: {self.adx[0]:.2f}')
+                self.log(f'SELL CREATE (Exit), Close: {self.dataclose[0]:.2f}, ADX: {self.adx.adx[0]:.2f}')
                 self.order = self.sell()
 
 # --- New Backtrader Strategy Definition: Mean Reversion Z-Score -----
@@ -114,19 +114,12 @@ class MeanReversionZScoreStrategy(bt.Strategy):
         else:
             self.dataclose = self.datas[0].close
 
-        period = self.p.zscore_period
-        sma_line_name = f'sma_{period}'
-        stdev_line_name = f'stdev_{period}'
-
-        rolling_mean = getattr(self.datas[0].lines, sma_line_name)
-        rolling_std = getattr(self.datas[0].lines, stdev_line_name)
+        # dynamically compute the moving average and standard deviation
+        self.sma   = btind.SMA(self.dataclose, period=self.p.zscore_period)
+        self.stdev = btind.StdDev(self.dataclose, period=self.p.zscore_period)
 
         epsilon = 1e-6
-        self.zscore = (self.dataclose - rolling_mean) / (rolling_std + epsilon)
-
-        self.zscore_lower_val = self.params.zscore_lower[0] if hasattr(self.params.zscore_lower, '__getitem__') else self.params.zscore_lower
-        self.zscore_upper_val = self.params.zscore_upper[0] if hasattr(self.params.zscore_upper, '__getitem__') else self.params.zscore_upper
-        self.exit_threshold_val = self.params.exit_threshold[0] if hasattr(self.params.exit_threshold, '__getitem__') else self.params.exit_threshold
+        self.zscore = (self.dataclose - self.sma) / (self.stdev + epsilon)
 
         self.order = None
         self.buyprice = None
@@ -161,20 +154,25 @@ class MeanReversionZScoreStrategy(bt.Strategy):
         if pd.isna(self.zscore[0]):
              return
 
+        current_zscore = self.zscore[0]
+        zscore_lower_threshold = self.p.zscore_lower
+        zscore_upper_threshold = self.p.zscore_upper
+        exit_threshold = self.p.exit_threshold
+
         if not self.position:
-            if self.zscore[0] < self.zscore_lower_val:
-                self.log(f'BUY CREATE (Z < Lower), Close: {self.dataclose[0]:.2f}, Z-Score: {self.zscore[0]:.2f}')
+            if current_zscore < zscore_lower_threshold:
+                self.log(f'BUY CREATE (Z < Lower), Close: {self.dataclose[0]:.2f}, Z-Score: {current_zscore:.2f}')
                 self.order = self.buy()
-            elif self.zscore[0] > self.zscore_upper_val:
-                 self.log(f'SELL CREATE (Z > Upper), Close: {self.dataclose[0]:.2f}, Z-Score: {self.zscore[0]:.2f}')
+            elif current_zscore > zscore_upper_threshold:
+                 self.log(f'SELL CREATE (Z > Upper), Close: {self.dataclose[0]:.2f}, Z-Score: {current_zscore:.2f}')
                  self.order = self.sell()
 
         else:
-            if self.position.size > 0 and self.zscore[0] >= self.exit_threshold_val:
-                self.log(f'CLOSE LONG (Z >= Exit), Close: {self.dataclose[0]:.2f}, Z-Score: {self.zscore[0]:.2f}')
+            if self.position.size > 0 and current_zscore >= exit_threshold:
+                self.log(f'CLOSE LONG (Z >= Exit), Close: {self.dataclose[0]:.2f}, Z-Score: {current_zscore:.2f}')
                 self.order = self.close()
-            elif self.position.size < 0 and self.zscore[0] <= self.exit_threshold_val:
-                 self.log(f'CLOSE SHORT (Z <= Exit), Close: {self.dataclose[0]:.2f}, Z-Score: {self.zscore[0]:.2f}')
+            elif self.position.size < 0 and current_zscore <= exit_threshold:
+                 self.log(f'CLOSE SHORT (Z <= Exit), Close: {self.dataclose[0]:.2f}, Z-Score: {current_zscore:.2f}')
                  self.order = self.close()
 
 # --- New Backtrader Strategy Definition: Custom Ratio (Short-Term Price / Long-Term Average) ---
@@ -201,22 +199,15 @@ class CustomRatioStrategy(bt.Strategy):
         else:
             self.dataclose = self.datas[0].close
 
-        period = self.params.long_ma_period
-        sma_line_name = f'sma_{period}'
-        self.long_ma = getattr(self.datas[0].lines, sma_line_name)
-
-        self.buy_threshold_val  = (self.params.buy_threshold[0]
-                                   if hasattr(self.params.buy_threshold, '__getitem__')
-                                   else self.params.buy_threshold)
-        self.sell_threshold_val = (self.params.sell_threshold[0]
-                                   if hasattr(self.params.sell_threshold, '__getitem__')
-                                   else self.params.sell_threshold)
-        self.exit_threshold_val = (self.params.exit_threshold[0]
-                                   if hasattr(self.params.exit_threshold, '__getitem__')
-                                   else self.params.exit_threshold)
+        # dynamically compute the long moving average
+        self.long_ma = btind.SMA(self.dataclose, period=self.p.long_ma_period)
 
         self.order = None
         self.buyprice = None
+        self.buycomm = None
+        self.current_ratio = None
+
+    def notify_order(self, order):
         self.buycomm = None
         self.current_ratio = None
 
@@ -251,19 +242,23 @@ class CustomRatioStrategy(bt.Strategy):
 
         self.current_ratio = self.dataclose[0] / self.long_ma[0]
 
+        buy_threshold = self.p.buy_threshold
+        sell_threshold = self.p.sell_threshold
+        exit_threshold = self.p.exit_threshold
+
         if not self.position:
-            if self.current_ratio < self.buy_threshold_val:
+            if self.current_ratio < buy_threshold:
                 self.log(f'BUY CREATE (Ratio < Buy Thr), Close: {self.dataclose[0]:.2f}, Ratio: {self.current_ratio:.4f}')
                 self.order = self.buy()
-            elif self.current_ratio > self.sell_threshold_val:
+            elif self.current_ratio > sell_threshold:
                  self.log(f'SELL CREATE (Ratio > Sell Thr), Close: {self.dataclose[0]:.2f}, Ratio: {self.current_ratio:.4f}')
                  self.order = self.sell()
 
         else:
-            if self.position.size > 0 and self.current_ratio >= self.exit_threshold_val:
+            if self.position.size > 0 and self.current_ratio >= exit_threshold:
                 self.log(f'CLOSE LONG (Ratio >= Exit Thr), Close: {self.dataclose[0]:.2f}, Ratio: {self.current_ratio:.4f}')
                 self.order = self.close()
-            elif self.position.size < 0 and self.current_ratio <= self.exit_threshold_val:
+            elif self.position.size < 0 and self.current_ratio <= exit_threshold:
                  self.log(f'CLOSE SHORT (Ratio <= Exit Thr), Close: {self.dataclose[0]:.2f}, Ratio: {self.current_ratio:.4f}')
                  self.order = self.close()
 
