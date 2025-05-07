@@ -47,18 +47,25 @@ class EMACrossoverStrategy(bt.Strategy):
             self.log(f'Order {order.ref} Submitted/Accepted')
             return
 
+        if order.status == order.Partial:
+            self.log(f'Order {order.ref} Partially Filled: Filled {order.executed.size} shares at {order.executed.price:.2f}')
+
         if order.status in [order.Completed]:
             if order.isbuy():
                 self.log(
-                    f'BUY EXECUTED, Ref: {order.ref}, Price: {order.executed.price:.2f}, Cost: {order.executed.value:.2f}, Comm {order.executed.comm:.2f}', doprint=True)
+                    f'BUY EXECUTED, Ref: {order.ref}, Price: {order.executed.price:.2f}, Size: {order.executed.size}, Cost: {order.executed.value:.2f}, Comm: {order.executed.comm:.2f}', doprint=True)
                 self.buyprice = order.executed.price
                 self.buycomm = order.executed.comm
             elif order.issell():
-                self.buycomm = order.executed.comm
-            elif order.issell():
-                self.log(f'SELL EXECUTED, Ref: {order.ref}, Price: {order.executed.price:.2f}, Cost: {order.executed.value:.2f}, Comm {order.executed.comm:.2f}', doprint=True)
+                self.log(
+                    f'SELL EXECUTED, Ref: {order.ref}, Price: {order.executed.price:.2f}, Size: {order.executed.size}, Cost: {order.executed.value:.2f}, Comm: {order.executed.comm:.2f}', doprint=True)
 
             self.bar_executed = len(self)
+
+            # Check for potential fill discrepancies (example: if expected fill price is known)
+            # This is a basic example; actual discrepancy detection might be more complex
+            if order.executed.price == 0 or order.executed.size == 0: # Basic check
+                self.log(f'WARNING: Order {order.ref} might have incorrect fill information. Price: {order.executed.price}, Size: {order.executed.size}', doprint=True)
 
         elif order.status in [order.Canceled, order.Margin, order.Rejected]:
             self.log(f'Order {order.ref} Canceled/Margin/Rejected')
@@ -129,17 +136,29 @@ class MeanReversionZScoreStrategy(bt.Strategy):
         if order.status in [order.Submitted, order.Accepted]:
             self.log(f'Order {order.ref} Submitted/Accepted')
             return
+
+        if order.status == order.Partial:
+            self.log(f'Order {order.ref} Partially Filled: Filled {order.executed.size} shares at {order.executed.price:.2f}')
+
         if order.status in [order.Completed]:
             if order.isbuy():
                 self.log(
-                    f'BUY EXECUTED, Ref: {order.ref}, Price: {order.executed.price:.2f}, Cost: {order.executed.value:.2f}, Comm {order.executed.comm:.2f}', doprint=True)
+                    f'BUY EXECUTED, Ref: {order.ref}, Price: {order.executed.price:.2f}, Size: {order.executed.size}, Cost: {order.executed.value:.2f}, Comm: {order.executed.comm:.2f}', doprint=True)
                 self.buyprice = order.executed.price
                 self.buycomm = order.executed.comm
             elif order.issell():
-                self.log(f'SELL EXECUTED, Ref: {order.ref}, Price: {order.executed.price:.2f}, Cost: {order.executed.value:.2f}, Comm {order.executed.comm:.2f}', doprint=True)
+                self.log(
+                    f'SELL EXECUTED, Ref: {order.ref}, Price: {order.executed.price:.2f}, Size: {order.executed.size}, Cost: {order.executed.value:.2f}, Comm: {order.executed.comm:.2f}', doprint=True)
+
             self.bar_executed = len(self)
+
+            # Check for potential fill discrepancies
+            if order.executed.price == 0 or order.executed.size == 0: # Basic check
+                self.log(f'WARNING: Order {order.ref} might have incorrect fill information. Price: {order.executed.price}, Size: {order.executed.size}', doprint=True)
+
         elif order.status in [order.Canceled, order.Margin, order.Rejected]:
             self.log(f'Order {order.ref} Canceled/Margin/Rejected')
+
         self.order = None
 
     def notify_trade(self, trade):
@@ -208,24 +227,32 @@ class CustomRatioStrategy(bt.Strategy):
         self.current_ratio = None
 
     def notify_order(self, order):
-        self.buycomm = None
-        self.current_ratio = None
-
-    def notify_order(self, order):
         if order.status in [order.Submitted, order.Accepted]:
             self.log(f'Order {order.ref} Submitted/Accepted')
             return
+
+        if order.status == order.Partial:
+            self.log(f'Order {order.ref} Partially Filled: Filled {order.executed.size} shares at {order.executed.price:.2f}')
+
         if order.status in [order.Completed]:
             if order.isbuy():
                 self.log(
-                    f'BUY EXECUTED, Ref: {order.ref}, Price: {order.executed.price:.2f}, Cost: {order.executed.value:.2f}, Comm {order.executed.comm:.2f}', doprint=True)
+                    f'BUY EXECUTED, Ref: {order.ref}, Price: {order.executed.price:.2f}, Size: {order.executed.size}, Cost: {order.executed.value:.2f}, Comm: {order.executed.comm:.2f}', doprint=True)
                 self.buyprice = order.executed.price
                 self.buycomm = order.executed.comm
             elif order.issell():
-                self.log(f'SELL EXECUTED, Ref: {order.ref}, Price: {order.executed.price:.2f}, Cost: {order.executed.value:.2f}, Comm {order.executed.comm:.2f}', doprint=True)
+                self.log(
+                    f'SELL EXECUTED, Ref: {order.ref}, Price: {order.executed.price:.2f}, Size: {order.executed.size}, Cost: {order.executed.value:.2f}, Comm: {order.executed.comm:.2f}', doprint=True)
+
             self.bar_executed = len(self)
+
+            # Check for potential fill discrepancies
+            if order.executed.price == 0 or order.executed.size == 0: # Basic check
+                self.log(f'WARNING: Order {order.ref} might have incorrect fill information. Price: {order.executed.price}, Size: {order.executed.size}', doprint=True)
+
         elif order.status in [order.Canceled, order.Margin, order.Rejected]:
             self.log(f'Order {order.ref} Canceled/Margin/Rejected')
+
         self.order = None
 
     def notify_trade(self, trade):
