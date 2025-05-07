@@ -262,8 +262,12 @@ class BrokerAPIHandler:
         logger.info(f"Stream Data Received: {data}")
         # Add specific handling based on data type (trade, quote, update) if needed
 
-    async def setup_stream(self, symbols=None, subscribe_trades=True, subscribe_quotes=False, subscribe_bars=False, subscribe_updates=True, subscribe_account=True):
-        """设置并连接到 Alpaca 数据流"""
+    async def setup_stream(self, symbols=None,
+                           trade_handler_cb=None, bar_handler_cb=None,
+                           quote_handler_cb=None, order_update_handler_cb=None, # Removed account_update_handler_cb
+                           subscribe_trades=True, subscribe_quotes=False,
+                           subscribe_bars=False, subscribe_updates=True): # Removed subscribe_account parameter
+        """设置并连接到 Alpaca 数据流. order_update_handler_cb handles both order and account updates from the trade_updates stream."""
         if self.stream:
             logger.warning("Stream already exists. Disconnecting existing stream first.")
             await self.stop_streaming() # Ensure clean state
@@ -272,47 +276,47 @@ class BrokerAPIHandler:
         try:
             self.stream = Stream(self.api_key,
                                  self.secret_key,
-                                 base_url=self.base_url, # Use the same base URL (paper/live)
-                                 data_feed='iex') # Or 'sip' for paid data
+                                 base_url=self.base_url,
+                                 data_feed='iex')
 
-            # --- Define generic or specific handlers ---
-            async def on_trade(trade):
-                logger.info(f"实时交易: {trade.symbol} Price={trade.price} Qty={trade.size}")
-                # Add your logic here
+            async def default_on_trade(trade):
+                logger.info(f"实时交易 (default handler): {trade.symbol} Price={trade.price} Qty={trade.size}")
 
-            async def on_quote(quote):
-                logger.debug(f"实时报价: {quote.symbol} Ask={quote.ask_price} Bid={quote.bid_price}")
-                # Add your logic here
+            async def default_on_quote(quote):
+                logger.debug(f"实时报价 (default handler): {quote.symbol} Ask={quote.ask_price} Bid={quote.bid_price}")
 
-            async def on_bar(bar):
-                 logger.info(f"实时分钟 K 线: {bar.symbol} O={bar.open} H={bar.high} L={bar.low} C={bar.close} V={bar.volume}")
-                 # Add your logic here
+            async def default_on_bar(bar):
+                 logger.info(f"实时分钟 K 线 (default handler): {bar.symbol} O={bar.open} H={bar.high} L={bar.low} C={bar.close} V={bar.volume}")
 
-            async def on_order_update(order_update):
-                 logger.info(f"订单更新: Event={order_update.event}, Order ID={order_update.order['id']}, Status={order_update.order['status']}")
-                 # Add your logic here (e.g., update internal order state)
+            async def default_on_update(update_data): # Renamed from default_on_order_update, handles all trade_updates
+                event = update_data.event
+                if hasattr(update_data, 'order') and isinstance(update_data.order, dict): # Likely OrderUpdate
+                    logger.info(f"订单更新 (default handler): Event={event}, Order ID={update_data.order.get('id')}, Status={update_data.order.get('status')}")
+                elif event == 'account_update' and hasattr(update_data, 'cash') and hasattr(update_data, 'portfolio_value'): # AccountUpdate
+                    logger.info(f"账户更新 (default handler): Event={event}, Cash={update_data.cash}, PortfolioValue={update_data.portfolio_value}")
+                else:
+                    logger.info(f"未知交易/账户更新 (default handler): Event={event}, Data={update_data}")
 
-            async def on_account_update(account_update):
-                 logger.info(f"账户更新: {account_update}")
-                 # Add your logic here (e.g., update buying power)
+            _trade_handler = trade_handler_cb or default_on_trade
+            _quote_handler = quote_handler_cb or default_on_quote
+            _bar_handler = bar_handler_cb or default_on_bar
+            _update_handler = order_update_handler_cb or default_on_update # This is for trade_updates stream
 
-            # --- Subscribe based on flags ---
             if subscribe_trades and symbols:
-                self.stream.subscribe_trades(on_trade, *symbols)
-                logger.info(f"Subscribed to trades for: {symbols}")
+                self.stream.subscribe_trades(_trade_handler, *symbols)
+                logger.info(f"Subscribed to trades for: {symbols} (using {'custom' if trade_handler_cb else 'default'} handler)")
             if subscribe_quotes and symbols:
-                self.stream.subscribe_quotes(on_quote, *symbols)
-                logger.info(f"Subscribed to quotes for: {symbols}")
+                self.stream.subscribe_quotes(_quote_handler, *symbols)
+                logger.info(f"Subscribed to quotes for: {symbols} (using {'custom' if quote_handler_cb else 'default'} handler)")
             if subscribe_bars and symbols:
-                 self.stream.subscribe_bars(on_bar, *symbols)
-                 logger.info(f"Subscribed to bars for: {symbols}")
-            if subscribe_updates:
-                self.stream.subscribe_trade_updates(on_order_update)
-                logger.info("Subscribed to trade (order) updates.")
-            if subscribe_account:
-                # Note: Account updates might be less frequent or require specific permissions
-                self.stream.subscribe_account_updates(on_account_update)
-                logger.info("Subscribed to account updates.")
+                 self.stream.subscribe_bars(_bar_handler, *symbols)
+                 logger.info(f"Subscribed to bars for: {symbols} (using {'custom' if bar_handler_cb else 'default'} handler)")
+            
+            if subscribe_updates: # This subscribes to the trade_updates stream
+                self.stream.subscribe_trade_updates(_update_handler) # This handler gets OrderUpdate and AccountUpdate
+                logger.info(f"Subscribed to trade/account updates (using {'custom' if order_update_handler_cb else 'default'} handler).")
+
+            # Removed the separate subscribe_account block as subscribe_trade_updates covers account events.
 
             logger.info("数据流设置完成，准备运行...")
             return True
@@ -326,7 +330,7 @@ class BrokerAPIHandler:
          if self.stream:
              logger.info("启动 Alpaca 数据流...")
              try:
-                 await self.stream.run() # This blocks until stopped or an error occurs
+                 await self.stream._run_forever() # MODIFIED: Call _run_forever() directly
                  logger.info("数据流已停止。")
              except KeyboardInterrupt:
                  logger.info("数据流被中断。")

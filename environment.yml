@@ -10,7 +10,9 @@ dependencies:
   - matplotlib
   - pyarrow
   - pykalman
-  - pyyaml 
+  - pyyaml
+  - requests
+  - urllib3
   - pip
   - pip:
     - alpaca-trade-api
