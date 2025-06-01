@@ -26,6 +26,7 @@ dependencies:
   # ===== quant / trading libs already packaged for conda =====
   - pandas-ta                     # technical‑analysis helpers
   - redis-py>=4.0                 # conda-forge name for the python redis client
+  - pykalman
 
   # pip fallback – packages that are PyPI‑only (for now) =====
   - pip                           # ensure pip is in the env so the next section works
@@ -33,5 +34,3 @@ dependencies:
       - alpaca-trade-api          # Alpaca SDK is only on PyPI
       - backtrader                # backtrader is PyPI‑only
       - asyncio-mqtt>=0.11.0      # not yet on conda‑forge
-      # If you prefer the PyPI redis client instead of redis‑py comment above:
-      # - redis>=4.0

@@ -35,7 +35,7 @@ def run_backtest(strategy_cls, data_feed, initial_cash, commission,
     
     if enable_enhanced_features:
         try:
-            risk_manager = RiskManager(initial_capital=initial_cash)
+            risk_manager = RiskManager()  # 移除initial_capital参数
             performance_analyzer = PerformanceAnalyzer(initial_capital=initial_cash)
             exception_handler = ExceptionHandler()
             
@@ -73,6 +73,12 @@ def run_backtest(strategy_cls, data_feed, initial_cash, commission,
             logger.warning(f"警告: 未提供 {strategy_name} 的 opt_param_names，无法分析优化结果。")
             return None
         logger.info(f"{strategy_name} 优化参数: {opt_param_names}")
+        
+        # 检查optimized_results是否为None或空
+        if optimized_results is None:
+            logger.error(f"{strategy_name} 优化结果为None，无法分析")
+            return None
+        
         opt_df = analyze_optimization_results(optimized_results, opt_param_names)
 
         if opt_df is not None and not opt_df.empty:
@@ -115,10 +121,30 @@ def run_backtest(strategy_cls, data_feed, initial_cash, commission,
 if __name__ == '__main__':
     multiprocessing.freeze_support()
 
-    logging.basicConfig(level=logging.INFO,
-                        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-                        datefmt='%Y-%m-%d %H:%M:%S')
+    # 创建logs目录（如果不存在）
+    import os
+    from datetime import datetime
+    
+    logs_dir = 'logs'
+    if not os.path.exists(logs_dir):
+        os.makedirs(logs_dir)
+    
+    # 生成带时间戳的日志文件名
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    log_filename = os.path.join(logs_dir, f'trading_log_{timestamp}.log')
+    
+    # 配置日志记录到文件和控制台
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S',
+        handlers=[
+            logging.FileHandler(log_filename, encoding='utf-8'),
+            logging.StreamHandler()
+        ]
+    )
     logger = logging.getLogger(__name__)
+    logger.info(f"日志文件已创建: {log_filename}")
 
     load_dotenv()
 
@@ -174,7 +200,7 @@ if __name__ == '__main__':
         agg_dict = {k: v for k, v in agg_dict.items() if k in spy_data_1min.columns}
 
         logger.info(f"\n正在重采样到 {time_frame_value} 分钟...")
-        resample_freq = f'{time_frame_value}T'
+        resample_freq = f'{time_frame_value}min'  # 使用'min'替代已弃用的'T'
         spy_data_resampled = spy_data_1min.resample(resample_freq, label='right', closed='right').agg(agg_dict).dropna()
 
         if not spy_data_resampled.empty:
@@ -381,11 +407,28 @@ if __name__ == '__main__':
                     logger.warning("无法打印比较结果，因为第一个策略没有有效的分析结果。")
             logger.info(separator.replace("-", "="))
 
+            # 创建charts目录（如果不存在）
+            charts_dir = 'charts'
+            if not os.path.exists(charts_dir):
+                os.makedirs(charts_dir)
+            
             for name, cerebro_instance in cerebro_instances.items():
                 try:
                     logger.info(f"\n尝试生成 {name} 策略图表 (单次运行)...")
                     if cerebro_instance:
-                        cerebro_instance.plot(style='candlestick', barup='green', bardown='red')
+                        import matplotlib.pyplot as plt
+                        
+                        # 生成图表
+                        figs = cerebro_instance.plot(style='candlestick', barup='green', bardown='red', returnfig=True)
+                        
+                        # 保存图表
+                        if figs and len(figs) > 0 and len(figs[0]) > 0:
+                            chart_filename = os.path.join(charts_dir, f'{name.replace(" ", "_").replace("(", "").replace(")", "")}_{timestamp}.png')
+                            figs[0][0].savefig(chart_filename, dpi=300, bbox_inches='tight')
+                            logger.info(f"图表已保存: {chart_filename}")
+                            plt.close(figs[0][0])  # 关闭图表以释放内存
+                        else:
+                            logger.warning(f"无法保存 {name} 图表，图表生成失败")
                     else:
                         logger.warning(f"无法为 {name} 生成图表，因为 Cerebro 实例为空。")
                 except Exception as e:

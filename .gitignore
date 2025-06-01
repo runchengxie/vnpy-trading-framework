@@ -1,3 +1,5 @@
 # Python bytecode cache
 __pycache__/
 full_code_text.txt
+logs/
+charts/

@@ -60,7 +60,12 @@ class EMACrossoverStrategy(bt.Strategy):
                 self.log(
                     f'SELL EXECUTED, Ref: {order.ref}, Price: {order.executed.price:.2f}, Size: {order.executed.size}, Cost: {order.executed.value:.2f}, Comm: {order.executed.comm:.2f}', doprint=True)
 
-            self.bar_executed = len(self)
+            # 安全地获取当前bar索引
+            try:
+                self.bar_executed = len(self)
+            except (TypeError, AttributeError):
+                self.bar_executed = 0
+                self.log('Warning: Unable to get current bar index, using 0', doprint=True)
 
             # Check for potential fill discrepancies (example: if expected fill price is known)
             # This is a basic example; actual discrepancy detection might be more complex
@@ -150,7 +155,12 @@ class MeanReversionZScoreStrategy(bt.Strategy):
                 self.log(
                     f'SELL EXECUTED, Ref: {order.ref}, Price: {order.executed.price:.2f}, Size: {order.executed.size}, Cost: {order.executed.value:.2f}, Comm: {order.executed.comm:.2f}', doprint=True)
 
-            self.bar_executed = len(self)
+            # 安全地获取当前bar索引
+            try:
+                self.bar_executed = len(self)
+            except (TypeError, AttributeError):
+                self.bar_executed = 0
+                self.log('Warning: Unable to get current bar index, using 0', doprint=True)
 
             # Check for potential fill discrepancies
             if order.executed.price == 0 or order.executed.size == 0: # Basic check
@@ -244,7 +254,12 @@ class CustomRatioStrategy(bt.Strategy):
                 self.log(
                     f'SELL EXECUTED, Ref: {order.ref}, Price: {order.executed.price:.2f}, Size: {order.executed.size}, Cost: {order.executed.value:.2f}, Comm: {order.executed.comm:.2f}', doprint=True)
 
-            self.bar_executed = len(self)
+            # 安全地获取当前bar索引
+            try:
+                self.bar_executed = len(self)
+            except (TypeError, AttributeError):
+                self.bar_executed = 0
+                self.log('Warning: Unable to get current bar index, using 0', doprint=True)
 
             # Check for potential fill discrepancies
             if order.executed.price == 0 or order.executed.size == 0: # Basic check

@@ -5,6 +5,21 @@ import logging
 logger = logging.getLogger(__name__)  # Create logger for this module
 # --- End Logging Setup ---
 
+# --- Helper function to safely get analysis results ---
+def safe_get_analysis(analyzer):
+    """
+    安全地获取分析器结果，避免内部异常导致程序崩溃
+    """
+    if analyzer is None:
+        return {}
+    try:
+        return analyzer.get_analysis() or {}
+    except Exception as e:
+        logger.warning(
+            f"{analyzer.__class__.__name__}.get_analysis() failed: {e}"
+        )
+        return {}
+
 # --- Helper function to analyze optimization results ---
 def analyze_optimization_results(optimized_results, param_names):
     """
@@ -59,29 +74,33 @@ def analyze_optimization_results(optimized_results, param_names):
                 param_values = {name: 'ParamError' for name in param_names}
 
             try:
+                # 检查strategy_instance是否有analyzers属性
+                if not hasattr(strategy_instance, 'analyzers'):
+                    logger.warning("策略实例缺少analyzers属性")
+                    raise AttributeError("Strategy instance missing analyzers")
+                
                 trade_analyzer = strategy_instance.analyzers.getbyname('tradeanalyzer')
                 sharpe_analyzer = strategy_instance.analyzers.getbyname('sharpe')
                 drawdown_analyzer = strategy_instance.analyzers.getbyname('drawdown')
                 returns_analyzer = strategy_instance.analyzers.getbyname('returns')
 
-                # *** 改进：检查 get_analysis() 的结果是否为 None ***
-                trade_analysis_raw = trade_analyzer.get_analysis() if trade_analyzer else None
-                sharpe_ratio_raw = sharpe_analyzer.get_analysis() if sharpe_analyzer else None
-                drawdown_raw = drawdown_analyzer.get_analysis() if drawdown_analyzer else None
-                returns_raw = returns_analyzer.get_analysis() if returns_analyzer else None
-
-                # 使用默认字典或检查 None
-                trade_analysis = trade_analysis_raw if trade_analysis_raw is not None else {}
-                sharpe_ratio = sharpe_ratio_raw if sharpe_ratio_raw is not None else {}
-                drawdown = drawdown_raw if drawdown_raw is not None else {}
-                returns = returns_raw if returns_raw is not None else {}
-                # --- 结束改进 ---
+                # 使用安全的get_analysis函数
+                trade_analysis = safe_get_analysis(trade_analyzer)
+                sharpe_ratio = safe_get_analysis(sharpe_analyzer)
+                drawdown = safe_get_analysis(drawdown_analyzer)
+                returns = safe_get_analysis(returns_analyzer)
 
                 total_trades = trade_analysis.get('total', {}).get('total', 0)
                 won_trades = trade_analysis.get('won', {}).get('total', 0)
                 win_rate = (won_trades / total_trades * 100) if total_trades > 0 else 0
                 total_pnl = trade_analysis.get('pnl', {}).get('net', {}).get('total', 0)
-                final_value = strategy_instance.broker.getvalue()
+                
+                # 检查broker属性是否存在
+                if hasattr(strategy_instance, 'broker') and strategy_instance.broker:
+                    final_value = strategy_instance.broker.getvalue()
+                else:
+                    logger.warning("策略实例缺少broker属性或broker为None")
+                    final_value = None
 
                 result_row = {
                     **param_values,
