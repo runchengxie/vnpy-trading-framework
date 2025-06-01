@@ -4,9 +4,9 @@ Algorithmic trading in HFT space is concerned with how to optimally run the core
 
 In Parts II and III extend the strategies from back-testing to some degree of live-testing to test simple scripts with Broker API of your choice. However, if specific Broker API/language learning curve is steep, you can limit the scope – Part II covers more detail. Real-time trading relies on loops which check for buy/sell signal, and to improve the performance more optimized languages than Python are used in the industry, e.g. GoLang. A. The trading code must handle exceptions: failures during the order execution and inconsistent/incorrect information received back from the broker (e.g., order filled when it wasn't, mismatch in order type). B. Trading overall should consider liquidity, market impact, and sudden market events – though you are not likely to be in position to affect the market but consider,
 
-    1. changes in price and volume (market impact, liquidity regime);
+1. changes in price and volume (market impact, liquidity regime);
 
-    2. order-specific events, subject to information about execution from API.
+2. order-specific events, subject to information about execution from API.
 
 ## Trend-Following Strategy
 

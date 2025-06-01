@@ -14,13 +14,36 @@ from io import StringIO
 from data_utils import fetch_historical_data, apply_kalman_filter, get_last_trading_day, add_technical_indicators
 from strategies import EMACrossoverStrategy, MeanReversionZScoreStrategy, CustomRatioStrategy, PandasDataFiltered
 from backtest_utils import analyze_optimization_results
+from risk_manager import RiskManager
+from websocket_handler import WebSocketDataHandler, MarketDataAggregator
+from performance_analyzer import PerformanceAnalyzer, TradeRecord
+from exception_handler import ExceptionHandler, ErrorCategory, ErrorSeverity
+from consistency_validator import ConsistencyValidator
 
 def run_backtest(strategy_cls, data_feed, initial_cash, commission,
                  single_run_params, optimize=False, opt_param_names=None,
                  opt_param_values=None,
-                 use_filtered_price=False, printlog=False, strategy_name="Strategy", maxcpus=1):
+                 use_filtered_price=False, printlog=False, strategy_name="Strategy", maxcpus=1,
+                 enable_enhanced_features=True):
     """Runs a single backtest or parameter optimization for a given strategy."""
     logger = logging.getLogger(__name__)
+    
+    # 初始化增强功能组件
+    risk_manager = None
+    performance_analyzer = None
+    exception_handler = None
+    
+    if enable_enhanced_features:
+        try:
+            risk_manager = RiskManager(initial_capital=initial_cash)
+            performance_analyzer = PerformanceAnalyzer(initial_capital=initial_cash)
+            exception_handler = ExceptionHandler()
+            
+            logger.info("增强功能组件初始化成功")
+        except Exception as e:
+            logger.warning(f"增强功能初始化失败，使用基础模式: {e}")
+            enable_enhanced_features = False
+    
     cerebro = bt.Cerebro()
     cerebro.adddata(data_feed)
     cerebro.broker.setcash(initial_cash)
