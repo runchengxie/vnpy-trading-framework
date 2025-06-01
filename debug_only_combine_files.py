@@ -1,7 +1,7 @@
 import os
 import sys
 
-def combine_files_to_txt(output_filename="combined_output.txt", target_directory="."):
+def combine_files_to_txt(output_filename="full_code_text.txt", target_directory="."):
     """
     Combines content of .py, .yml, and README.md files in the target directory
     into a single txt file, wrapping each file's content with XML-like tags.
@@ -30,7 +30,7 @@ def combine_files_to_txt(output_filename="combined_output.txt", target_directory
         # Open the output file in write mode with UTF-8 encoding
         with open(output_filepath, 'w', encoding='utf-8') as outfile:
             # Add the introductory sentence at the beginning of the file
-            outfile.write("以下是全部的相关代码\n\n") # Add two newlines for separation
+            outfile.write("Here are the full code\n\n") # Add two newlines for separation
 
             # Iterate through all items in the target directory
             for filename in os.listdir(target_directory):
