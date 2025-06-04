@@ -310,12 +310,14 @@ class RiskManager:
         """
         if len(self.price_history) < 2:
             return 0.0
-        
-        prices = np.array(self.price_history)
-        cumulative = np.cumprod(1 + np.diff(prices) / prices[:-1])
+
+        prices = np.array(self.price_history, dtype=float)
+        # Use price relatives starting at 1 to ensure drawdowns from the
+        # initial price are captured correctly
+        cumulative = prices / prices[0]
         running_max = np.maximum.accumulate(cumulative)
         drawdown = (cumulative - running_max) / running_max
-        return abs(np.min(drawdown))
+        return abs(drawdown.min())
     
     def _calculate_sharpe_ratio(self, returns: np.ndarray, risk_free_rate: float = 0.02) -> float:
         """
