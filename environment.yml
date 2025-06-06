@@ -1,4 +1,4 @@
-name: cqf-algo-trading
+name: patf-algo-trading
 channels:
   - conda-forge    # keep conda-forge first so its recipes win
   - defaults       # fall back to the Anaconda defaults channel
