@@ -3,3 +3,4 @@ __pycache__/
 full_code_text.txt
 logs/
 charts/
+.env
