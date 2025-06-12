@@ -1,8 +1,7 @@
-# test_broker_api.py
 import time
 import logging
-import asyncio # Needed if testing async parts, though primary test is sync
-from broker_handler import BrokerAPIHandler # Assuming your class is in broker_handler.py
+import asyncio
+from patf_trading_framework.broker_handler import BrokerAPIHandler
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)

@@ -1,9 +1,11 @@
 # enhanced_trading_example.py
 """
-增强交易系统示例
-展示如何使用新增的风险管理、WebSocket数据流、性能分析、异常处理和一致性验证功能
+Enhanced Trading System Example
+Demonstrates how to use the newly added risk management, WebSocket data streaming, 
+performance analysis, exception handling, and consistency validation features
 """
 
+import os
 import logging
 import time
 import asyncio
@@ -11,17 +13,20 @@ from datetime import datetime, timedelta
 from typing import Dict, List
 import pandas as pd
 import numpy as np
+import yaml
+from dotenv import load_dotenv
+import re
 
-# 导入核心模块
-from risk_manager import RiskManager
-from websocket_handler import WebSocketDataHandler, MarketDataAggregator
-from performance_analyzer import PerformanceAnalyzer, TradeRecord
-from exception_handler import ExceptionHandler, ErrorCategory, ErrorSeverity, handle_exceptions
-from consistency_validator import ConsistencyValidator
-from broker_handler import BrokerAPIHandler
-from live_trader import LiveMeanReversionStrategy, TradingState
+# Import core modules
+from patf_trading_framework.risk_manager import RiskManager
+from patf_trading_framework.websocket_handler import WebSocketDataHandler, MarketDataAggregator
+from patf_trading_framework.performance_analyzer import PerformanceAnalyzer, TradeRecord
+from patf_trading_framework.exception_handler import ExceptionHandler, ErrorCategory, ErrorSeverity, handle_exceptions
+from patf_trading_framework.consistency_validator import ConsistencyValidator
+from patf_trading_framework.broker_handler import BrokerAPIHandler
+from patf_trading_framework.live_trader import LiveMeanReversionStrategy, TradingState
 
-# 配置日志
+# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -30,93 +35,103 @@ logger = logging.getLogger(__name__)
 
 class EnhancedTradingSystem:
     """
-    增强交易系统
-    集成所有新增功能的完整交易系统
+    Enhanced Trading System
+    Complete trading system integrating all newly added features
     """
     
-    def __init__(self, config: Dict):
-        self.config = config
+    def __init__(self, app_config: Dict):
+        self.app_config = app_config
         
-        # 初始化核心组件
+        # Get initial capital from config
+        initial_capital = self.app_config.get('live_trading', {}).get('initial_capital', 100000)
+        
+        # Initialize core components
         self.risk_manager = RiskManager(
-            initial_capital=config.get('initial_capital', 100000)
+            var_window=self.app_config.get('live_trading', {}).get('risk_limits', {}).get('var_window', 252),
+            var_confidence=self.app_config.get('live_trading', {}).get('risk_limits', {}).get('var_confidence', 0.95)
         )
         
         self.performance_analyzer = PerformanceAnalyzer(
-            initial_capital=config.get('initial_capital', 100000)
+            initial_capital=initial_capital
         )
         
         self.exception_handler = ExceptionHandler()
         self.consistency_validator = ConsistencyValidator()
         
-        # 初始化交易组件
+        # Initialize trading components
         self.broker_handler = None
         self.websocket_handler = None
         self.market_aggregator = None
         self.trading_strategy = None
-        self.trading_state = TradingState()
+        self.trading_state = TradingState(
+            symbol=self.app_config.get('live_trading', {}).get('symbol', 'AAPL')
+        )
         
-        # 数据存储
+        # Data storage
         self.market_data_buffer = []
         self.trade_history = []
         self.signal_history = []
         
-        logger.info("增强交易系统初始化完成")
+        logger.info("Enhanced trading system initialization completed")
     
     @handle_exceptions(ErrorCategory.SYSTEM, ErrorSeverity.HIGH)
     def initialize_components(self):
         """
-        初始化所有组件
+        Initialize all components
         """
-        logger.info("开始初始化交易组件...")
+        logger.info("Starting to initialize trading components...")
         
         try:
-            # 初始化Broker API
+            # Initialize Broker API
             self.broker_handler = BrokerAPIHandler()
             
-            # 初始化WebSocket数据流
+            # Initialize WebSocket data stream
+            alpaca_config = self.app_config.get('alpaca', {})
             self.websocket_handler = WebSocketDataHandler(
-                api_key=self.config.get('alpaca_api_key'),
-                secret_key=self.config.get('alpaca_secret_key'),
-                base_url=self.config.get('alpaca_base_url')
+                api_key=alpaca_config.get('api_key'),
+                secret_key=alpaca_config.get('secret_key'),
+                base_url=alpaca_config.get('base_url')
             )
             
-            # 初始化市场数据聚合器
-            self.market_aggregator = MarketDataAggregator()
+            # Initialize market data aggregator (after websocket_handler)
+            self.market_aggregator = MarketDataAggregator(self.websocket_handler)
             
-            # 初始化交易策略
-            strategy_config = self.config.get('strategy', {})
+            # Initialize trading strategy with correct parameter mapping
+            strategy_config = self.app_config.get('strategies', {}).get('mean_reversion', {}).get('params', {})
+            live_trading_config = self.app_config.get('live_trading', {})
+            
             self.trading_strategy = LiveMeanReversionStrategy(
-                symbol=strategy_config.get('symbol', 'AAPL'),
-                lookback_period=strategy_config.get('lookback_period', 20),
-                z_threshold=strategy_config.get('z_threshold', 2.0),
-                position_size=strategy_config.get('position_size', 100)
+                symbol=live_trading_config.get('symbol', 'AAPL'),
+                zscore_period=strategy_config.get('zscore_period', 20),
+                zscore_upper=strategy_config.get('zscore_upper', 2.0),
+                zscore_lower=strategy_config.get('zscore_lower', -2.0),
+                exit_threshold=strategy_config.get('exit_threshold', 0.0)
             )
             
-            # 注册异常处理回调
+            # Register exception handling callbacks
             self._register_error_callbacks()
             
-            logger.info("所有组件初始化成功")
+            logger.info("All components initialized successfully")
             
         except Exception as e:
-            logger.error(f"组件初始化失败: {e}")
+            logger.error(f"Component initialization failed: {e}")
             raise
     
     def _register_error_callbacks(self):
         """
-        注册错误处理回调
+        Register error handling callbacks
         """
         def on_network_error(error_record):
-            logger.warning(f"网络错误处理: {error_record.message}")
-            # 可以在这里添加网络重连逻辑
+            logger.warning(f"Network error handling: {error_record.message}")
+            # Network reconnection logic can be added here
         
         def on_api_error(error_record):
-            logger.warning(f"API错误处理: {error_record.message}")
-            # 可以在这里添加API重试逻辑
+            logger.warning(f"API error handling: {error_record.message}")
+            # API retry logic can be added here
         
         def on_order_error(error_record):
-            logger.error(f"订单错误处理: {error_record.message}")
-            # 可以在这里添加订单恢复逻辑
+            logger.error(f"Order error handling: {error_record.message}")
+            # Order recovery logic can be added here
         
         self.exception_handler.register_error_callback(ErrorCategory.NETWORK, on_network_error)
         self.exception_handler.register_error_callback(ErrorCategory.API, on_api_error)
@@ -125,22 +140,22 @@ class EnhancedTradingSystem:
     @handle_exceptions(ErrorCategory.DATA_QUALITY, ErrorSeverity.MEDIUM)
     def process_market_data(self, market_data: Dict):
         """
-        处理市场数据
+        Process market data
         """
         try:
-            # 数据质量检查
+            # Data quality check
             if not self.market_aggregator.validate_data_quality(market_data):
-                logger.warning("市场数据质量检查失败")
+                logger.warning("Market data quality check failed")
                 return
             
-            # 添加到缓冲区
+            # Add to buffer
             self.market_data_buffer.append(market_data)
             
-            # 保持缓冲区大小
+            # Maintain buffer size
             if len(self.market_data_buffer) > 1000:
                 self.market_data_buffer = self.market_data_buffer[-1000:]
             
-            # 生成交易信号
+            # Generate trading signal
             signal = self.trading_strategy.generate_signal(market_data)
             
             if signal != 'hold':
@@ -154,13 +169,13 @@ class EnhancedTradingSystem:
                 
                 self.signal_history.append(signal_record)
                 
-                # 风险检查
+                # Risk check
                 if self._risk_check(signal_record):
                     self._execute_trade(signal, market_data)
                 else:
-                    logger.warning(f"风险检查未通过，跳过交易信号: {signal}")
+                    logger.warning(f"Risk check failed, skipping trading signal: {signal}")
             
-            # 更新性能分析
+            # Update performance analysis
             self._update_performance_metrics(market_data)
             
         except Exception as e:
@@ -171,44 +186,47 @@ class EnhancedTradingSystem:
     
     def _risk_check(self, signal_record: Dict) -> bool:
         """
-        执行风险检查
+        Execute risk check
         """
         try:
-            # 流动性检查
+            # Liquidity check
             symbol = signal_record['symbol']
             if not self.risk_manager.check_liquidity_risk(symbol, 100):
                 return False
             
-            # 集中度检查
+            # Concentration check
             current_positions = self.trading_state.get_positions()
             if not self.risk_manager.check_concentration_risk(current_positions, symbol, 100):
                 return False
             
-            # VaR检查
+            # VaR check
             portfolio_values = [(datetime.now(), self.trading_state.get_portfolio_value())]
             risk_metrics = self.risk_manager.calculate_portfolio_risk(
                 portfolio_values, current_positions
             )
             
-            if risk_metrics.get('var_95', 0) > self.config.get('max_var', 0.05):
-                logger.warning(f"VaR超过限制: {risk_metrics['var_95']:.4f}")
+            max_var = self.app_config.get('live_trading', {}).get('risk_limits', {}).get('max_var', 0.05)
+            if risk_metrics.get('var_95', 0) > max_var:
+                logger.warning(f"VaR exceeds limit: {risk_metrics['var_95']:.4f}")
                 return False
             
             return True
             
         except Exception as e:
-            logger.error(f"风险检查失败: {e}")
+            logger.error(f"Risk check failed: {e}")
             return False
     
     @handle_exceptions(ErrorCategory.ORDER_EXECUTION, ErrorSeverity.HIGH)
     def _execute_trade(self, signal: str, market_data: Dict):
         """
-        执行交易
+        Execute trade
         """
         try:
             symbol = market_data['symbol']
             price = market_data['price']
-            quantity = self.trading_strategy.position_size
+            # Get position size from config instead of strategy
+            strategy_config = self.app_config.get('strategies', {}).get('mean_reversion', {}).get('params', {})
+            quantity = strategy_config.get('position_size', 100)
             
             if signal == 'buy':
                 order_result = self.broker_handler.place_order(
@@ -216,7 +234,7 @@ class EnhancedTradingSystem:
                     qty=quantity,
                     side='buy',
                     type='limit',
-                    limit_price=price * 1.001  # 稍微高于市价
+                    limit_price=price * 1.001  # Slightly above market price
                 )
             elif signal == 'sell':
                 order_result = self.broker_handler.place_order(
@@ -224,32 +242,32 @@ class EnhancedTradingSystem:
                     qty=quantity,
                     side='sell',
                     type='limit',
-                    limit_price=price * 0.999  # 稍微低于市价
+                    limit_price=price * 0.999  # Slightly below market price
                 )
             else:
                 return
             
             if order_result and 'id' in order_result:
-                # 记录交易
+                # Record trade
                 trade_record = TradeRecord(
                     timestamp=datetime.now(),
                     symbol=symbol,
                     side=signal,
                     quantity=quantity,
                     price=price,
-                    commission=0.005 * quantity * price,  # 假设0.5%手续费
+                    commission=0.005 * quantity * price,  # Assume 0.5% commission
                     order_id=order_result['id']
                 )
                 
                 self.performance_analyzer.add_trade(trade_record)
                 self.trade_history.append(trade_record)
                 
-                # 更新交易状态
+                # Update trading state
                 self.trading_state.update_position(symbol, quantity if signal == 'buy' else -quantity)
                 
-                logger.info(f"交易执行成功: {signal} {quantity} {symbol} @ {price}")
+                logger.info(f"Trade executed successfully: {signal} {quantity} {symbol} @ {price}")
             else:
-                logger.error(f"交易执行失败: {order_result}")
+                logger.error(f"Trade execution failed: {order_result}")
                 
         except Exception as e:
             self.exception_handler.handle_exception(
@@ -259,10 +277,10 @@ class EnhancedTradingSystem:
     
     def _update_performance_metrics(self, market_data: Dict):
         """
-        更新性能指标
+        Update performance metrics
         """
         try:
-            # 更新组合价值
+            # Update portfolio value
             current_positions = self.trading_state.get_positions()
             market_prices = {market_data['symbol']: market_data['price']}
             
@@ -271,22 +289,22 @@ class EnhancedTradingSystem:
             )
             
         except Exception as e:
-            logger.warning(f"性能指标更新失败: {e}")
+            logger.warning(f"Performance metrics update failed: {e}")
     
     async def start_live_trading(self):
         """
-        启动实时交易
+        Start live trading
         """
-        logger.info("启动实时交易系统...")
+        logger.info("Starting live trading system...")
         
         try:
-            # 初始化组件
+            # Initialize components
             self.initialize_components()
             
-            # 订阅市场数据
-            symbols = [self.config.get('strategy', {}).get('symbol', 'AAPL')]
+            # Subscribe to market data
+            symbols = [self.app_config.get('live_trading', {}).get('symbol', 'AAPL')]
             
-            # 启动WebSocket数据流
+            # Start WebSocket data stream
             await self.websocket_handler.start_data_stream(
                 symbols=symbols,
                 data_callback=self.process_market_data
@@ -300,11 +318,11 @@ class EnhancedTradingSystem:
     
     def run_consistency_validation(self, backtest_data: Dict) -> Dict:
         """
-        运行一致性验证
+        Run consistency validation
         """
-        logger.info("开始一致性验证...")
+        logger.info("Starting consistency validation...")
         
-        # 准备实盘数据
+        # Prepare live data
         live_data = {
             'signals': self.signal_history,
             'trades': [{
@@ -317,40 +335,40 @@ class EnhancedTradingSystem:
             'performance': self.performance_analyzer.calculate_risk_metrics()
         }
         
-        # 执行验证
+        # Execute validation
         validation_results = self.consistency_validator.validate_consistency(
             backtest_data, live_data
         )
         
-        # 生成报告
+        # Generate report
         validation_report = self.consistency_validator.generate_validation_report(
             validation_results
         )
         
-        logger.info(f"一致性验证完成，总体状态: {validation_report['overall_status']}")
+        logger.info(f"Consistency validation completed, overall status: {validation_report['overall_status']}")
         return validation_report
     
     def generate_comprehensive_report(self) -> Dict:
         """
-        生成综合报告
+        Generate comprehensive report
         """
-        logger.info("生成综合交易报告...")
+        logger.info("Generating comprehensive trading report...")
         
         try:
-            # 性能报告
+            # Performance report
             performance_report = self.performance_analyzer.generate_performance_report()
             
-            # 风险报告
+            # Risk report
             portfolio_values = [(datetime.now(), self.trading_state.get_portfolio_value())]
             current_positions = self.trading_state.get_positions()
             risk_metrics = self.risk_manager.calculate_portfolio_risk(
                 portfolio_values, current_positions
             )
             
-            # 异常统计
+            # Exception statistics
             error_statistics = self.exception_handler.get_error_statistics()
             
-            # 交易统计
+            # Trading statistics
             trading_stats = {
                 'total_trades': len(self.trade_history),
                 'total_signals': len(self.signal_history),
@@ -372,107 +390,150 @@ class EnhancedTradingSystem:
                 }
             }
             
-            logger.info("综合报告生成完成")
+            logger.info("Comprehensive report generation completed")
             return comprehensive_report
             
         except Exception as e:
-            logger.error(f"报告生成失败: {e}")
+            logger.error(f"Report generation failed: {e}")
             return {'error': str(e)}
     
     def stop_trading(self):
         """
-        停止交易
+        Stop trading
         """
-        logger.info("停止交易系统...")
+        logger.info("Stopping trading system...")
         
         try:
-            # 停止WebSocket连接
+            # Stop WebSocket connection
             if self.websocket_handler:
                 asyncio.create_task(self.websocket_handler.stop_data_stream())
             
-            # 平仓所有持仓（可选）
+            # Close all positions (optional)
             current_positions = self.trading_state.get_positions()
             for symbol, quantity in current_positions.items():
                 if quantity != 0:
-                    logger.info(f"平仓: {symbol} {quantity}")
-                    # 这里可以添加平仓逻辑
+                    logger.info(f"Closing position: {symbol} {quantity}")
+                    # Position closing logic can be added here
             
-            # 生成最终报告
+            # Generate final report
             final_report = self.generate_comprehensive_report()
             
-            # 导出报告
+            # Export reports
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            
+            # Create output directories
+            output_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'output')
+            charts_dir = os.path.join(output_dir, 'charts')
+            logs_dir = os.path.join(output_dir, 'logs')
+            os.makedirs(charts_dir, exist_ok=True)
+            os.makedirs(logs_dir, exist_ok=True)
+            
             self.performance_analyzer.plot_performance_charts(
-                f'performance_chart_{timestamp}.png'
+                os.path.join(charts_dir, f'performance_chart_{timestamp}.png')
             )
             
             self.exception_handler.export_error_log(
-                f'error_log_{timestamp}.json'
+                os.path.join(logs_dir, f'error_log_{timestamp}.json')
             )
             
-            logger.info("交易系统已停止")
+            logger.info("Trading system stopped")
             return final_report
             
         except Exception as e:
-            logger.error(f"停止交易系统时发生错误: {e}")
+            logger.error(f"Error occurred while stopping trading system: {e}")
 
-# 示例配置
-EXAMPLE_CONFIG = {
-    'initial_capital': 100000,
-    'alpaca_api_key': 'your_api_key',
-    'alpaca_secret_key': 'your_secret_key',
-    'alpaca_base_url': 'https://paper-api.alpaca.markets',
-    'strategy': {
-        'symbol': 'AAPL',
-        'lookback_period': 20,
-        'z_threshold': 2.0,
-        'position_size': 100
-    },
-    'risk_limits': {
-        'max_var': 0.05,
-        'max_concentration': 0.3,
-        'min_liquidity': 1000000
-    }
-}
-
-# 示例使用
-async def main():
+def load_app_config(config_path='config.yml'):
     """
-    主函数示例
+    Load application configuration from YAML file with environment variable substitution
     """
-    # 创建交易系统
-    trading_system = EnhancedTradingSystem(EXAMPLE_CONFIG)
+    # Load environment variables from .env file
+    load_dotenv()
+    
+    # Determine the path to config.yml from the script's location
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    config_file_path = os.path.join(os.path.dirname(script_dir), config_path)
     
     try:
-        # 启动实时交易（这里只是示例，实际使用时需要配置真实的API密钥）
+        with open(config_file_path, 'r') as file:
+            config_content = file.read()
+        
+        # Substitute environment variables
+        def replace_env_vars(match):
+            env_var = match.group(1)
+            return os.getenv(env_var, match.group(0))  # Return original if env var not found
+        
+        config_content = re.sub(r'\$\{([^}]+)\}', replace_env_vars, config_content)
+        
+        # Parse YAML
+        config = yaml.safe_load(config_content)
+        
+        logger.info(f"Configuration loaded successfully from {config_file_path}")
+        return config
+        
+    except FileNotFoundError:
+        logger.error(f"Configuration file not found: {config_file_path}")
+        raise
+    except yaml.YAMLError as e:
+        logger.error(f"Error parsing YAML configuration: {e}")
+        raise
+    except Exception as e:
+        logger.error(f"Error loading configuration: {e}")
+        raise
+
+# Example usage
+async def async_main():
+    """
+    Asynchronous main function example
+    """
+    # Load configuration from config.yml
+    app_config = load_app_config()
+    
+    # Create trading system
+    trading_system = EnhancedTradingSystem(app_config)
+    
+    try:
+        # Start live trading (this is just an example, real API keys need to be configured for actual use)
         # await trading_system.start_live_trading()
         
-        # 模拟运行一段时间
-        logger.info("模拟交易运行中...")
+        # Simulate running for a period of time
+        logger.info("Simulated trading running...")
         
-        # 模拟一些市场数据
+        # Get symbol from config
+        symbol = app_config.get('live_trading', {}).get('symbol', 'AAPL')
+        
+        # Simulate some market data
         for i in range(10):
             market_data = {
-                'symbol': 'AAPL',
+                'symbol': symbol,
                 'price': 150.0 + np.random.normal(0, 1),
                 'volume': 1000000,
                 'timestamp': datetime.now()
             }
             
             trading_system.process_market_data(market_data)
-            time.sleep(1)
+            await asyncio.sleep(0.1)  # Use async sleep instead of time.sleep
         
-        # 生成报告
+        # Generate report
         report = trading_system.generate_comprehensive_report()
-        logger.info(f"交易报告: {report}")
+        logger.info(f"Trading report: {report}")
         
-        # 停止交易
+        # Stop trading
         final_report = trading_system.stop_trading()
         
     except Exception as e:
-        logger.error(f"交易系统运行错误: {e}")
+        logger.error(f"Trading system runtime error: {e}")
         trading_system.stop_trading()
 
+def main():
+    """
+    Synchronous entry point for setuptools/pip
+    """
+    try:
+        # Run asynchronous main function
+        asyncio.run(async_main())
+    except KeyboardInterrupt:
+        logger.info("Program exited via keyboard interrupt.")
+
 if __name__ == "__main__":
-    # 运行示例
-    asyncio.run(main())
+    # When running this script directly, call the synchronous main function
+    main()

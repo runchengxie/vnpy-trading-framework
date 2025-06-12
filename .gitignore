@@ -1,6 +1,20 @@
-# Python bytecode cache
+# Byte-compiled / optimized / DLL files
 __pycache__/
+*.py[cod]
+*$py.class
+
+# Environment variables
+.env
+
+# Conda/Python virtual environment
+/venv/
+/env/
+*.egg-info/
+
+# IDE / Editor specific files
+.vscode/
+.idea/
+
+# Miscellaneous / debugging
 full_code_text.txt
 logs/
-charts/
-.env

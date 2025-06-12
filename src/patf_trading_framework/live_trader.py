@@ -8,7 +8,7 @@ import collections # For deque
 import numpy as np # For mean/std calculations
 
 # Import necessary components from your existing modules
-from broker_handler import BrokerAPIHandler
+from .broker_handler import BrokerAPIHandler
 
 # Configure logging
 logging.basicConfig(level=logging.INFO,

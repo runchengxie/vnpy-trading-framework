@@ -1,0 +1,105 @@
+# --- API and Broker Configuration ---
+alpaca:
+  # Using placeholders for environment variables, will be loaded from .env file, these values will be overridden if present
+  api_key: ${APCA_API_KEY_ID}
+  secret_key: ${APCA_API_SECRET_KEY}
+  base_url: ${ALPACA_BASE_URL}
+
+# --- General Data Configuration ---
+data:
+  ticker: "SPY"
+  timeframe_value: 15
+  timeframe_unit: "Minute" # 'Minute', 'Hour', 'Day'
+  start_date: "2023-01-01"
+  end_date: "2023-01-07" # Shorten the time interval for faster testing
+  resample_freq_template: '{timeframe_value}min'
+
+# --- File and Directory Paths ---
+paths:
+  output_dir: "output"
+  log_dir: "output/logs"
+  chart_dir: "output/charts"
+  cache_dir: "output/cache"
+
+# --- Backtest Configuration ---
+backtest:
+  initial_cash: 100000.0
+  commission: 0.001
+  max_cpus: "auto" # 'auto' will use cpu_count - 1
+
+# --- Strategy Configurations ---
+strategies:
+  mean_reversion:
+    name: 'Mean Reversion (Z-Score)'
+    class_name: 'MeanReversionZScoreStrategy'
+    use_filtered_data: True
+    # Single run parameters, also used as defaults for optimization
+    params:
+      zscore_period: 20
+      zscore_upper: 2.0
+      zscore_lower: -2.0
+      exit_threshold: 0.0
+      use_filtered_price: True
+      printlog: False
+    # Optimization parameter ranges (for cerebro.optstrategy)
+    opt_ranges:
+      zscore_period: [20, 30]
+      zscore_upper: [2.0]
+      zscore_lower: [-2.0]
+      exit_threshold: [0.0]
+
+  ema_crossover:
+    name: 'Trend Following (EMA+ADX)'
+    class_name: 'EMACrossoverStrategy'
+    use_filtered_data: False
+    params:
+      ema_short: 10
+      ema_long: 30
+      adx_period: 14
+      adx_threshold: 25.0
+      use_filtered_price: False
+      printlog: False
+    opt_ranges:
+      ema_short: [10]
+      ema_long: [30]
+      adx_period: [14]
+      adx_threshold: [25.0, 30.0]
+
+  custom_ratio:
+    name: 'Custom Ratio Strategy'
+    class_name: 'CustomRatioStrategy'
+    use_filtered_data: False
+    params:
+      long_ma_period: 50
+      buy_threshold: 0.98
+      sell_threshold: 1.02
+      exit_threshold: 1.0
+      use_filtered_price: False
+      printlog: False
+    opt_ranges:
+      long_ma_period: [50]
+      buy_threshold: [0.98, 0.95]
+      sell_threshold: [1.02]
+      exit_threshold: [1.0]
+
+# --- Live Trading Configuration ---
+live_trading:
+  symbol: "AAPL"
+  initial_capital: 100000
+  risk_limits:
+    max_var: 0.05
+    max_concentration: 0.3
+    min_liquidity: 1000000
+
+# --- Logging Configuration ---
+logging:
+  level: "INFO" # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+  datefmt: '%Y-%m-%d %H:%M:%S'
+
+# --- Plotting Configuration ---
+plotting:
+  enabled: True
+  style: 'candlestick'
+  barup: 'green'
+  bardown: 'red'

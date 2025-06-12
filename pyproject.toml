@@ -1,0 +1,103 @@
+# pyproject.toml
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "patf-trading-framework"
+version = "0.1.0"
+authors = [
+  { name="Richard", email="xieruncheng@gmail.com" }
+]
+description = "A comprehensive Python framework for algorithmic trading strategy development, back-testing, and live trading."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file="LICENSE" }
+keywords = ["trading", "algorithmic-trading", "back-testing", "finance", "alpaca"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Financial and Insurance Industry",
+    "Topic :: Office/Business :: Financial :: Investment",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+# Core dependencies: these are required to run the project.
+dependencies = [
+    "pandas>=1.5",
+    "numpy>=1.25", # Updated to match pandas-ta's requirements
+    "pyyaml",
+    "matplotlib>=3.5",
+    "seaborn>=0.12",
+    "requests>=2.28",
+    "python-dotenv>=0.21",
+    "pyarrow>=11.0",
+    "websockets>=10.0",
+    "pandas-ta",
+    "pykalman",
+    "scipy>=1.8",
+    "alpaca-trade-api",
+    "backtrader",
+    "urllib3" # A dependency of requests and alpaca-trade-api; explicit declaration is safer
+]
+
+# Optional dependencies: these allow extra functionality.
+# 'dev' includes all tools required for development, testing, and linting.
+# Use 'pip install -e .[dev]' to install.
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",       # For running tests
+    "black",             # Code formatting tool
+    "pylint",            # Code static analysis tool
+    "pre-commit",        # For automatically running checks before commits
+]
+
+# Define script entry points: allows running scripts directly from the command line after installation.
+[project.scripts]
+run-backtest = "scripts.run_backtests:main"
+run-live = "scripts.run_live_trading:main"
+
+
+[project.urls]
+Homepage = "N/A"
+"Bug Tracker" = "N/A"
+
+# --- Tool-specific configurations ---
+
+[tool.setuptools]
+packages = ["patf_trading_framework"]
+package-dir = {"" = "src"}
+
+[tool.black]
+# Black configurations
+line-length = 88
+target-version = ['py310']
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+)/
+'''
+
+[tool.pylint.main]
+# Pylint configurations
+disable = [
+    "C0114", # missing-module-docstring
+    "C0115", # missing-class-docstring
+    "C0116", # missing-function-docstring
+    "R0903", # too-few-public-methods
+    "R0913", # too-many-arguments
+]

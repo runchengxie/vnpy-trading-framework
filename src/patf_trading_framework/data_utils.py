@@ -15,12 +15,9 @@ if not hasattr(np, "NaN"):
 import pandas_ta as ta # Add pandas_ta import
 
 # --- Logging Setup ---
-logger = logging.getLogger(__name__) # Create logger for this module
-# --- End Logging Setup ---
+logger = logging.getLogger(__name__)
 
-# Define cache directory relative to this file's location or use an absolute path
-CACHE_DIR = 'cache'
-os.makedirs(CACHE_DIR, exist_ok=True) # Create cache directory if it doesn't exist
+# Cache directory will be provided as a parameter to functions that need it
 
 # --- Helper Function to find the nearest previous trading day ---
 def get_last_trading_day(api_instance, target_date_str):
@@ -46,41 +43,45 @@ def get_last_trading_day(api_instance, target_date_str):
         current_dt = target_dt
         while current_dt >= date.fromisoformat(calendar_start):
             if current_dt in trading_days:
-                logger.info(f"目标日期 {target_date_str} 的交易日确定为: {current_dt.strftime('%Y-%m-%d')}") # Use logger
+                logger.info(f"Trading day for target date {target_date_str} determined as: {current_dt.strftime('%Y-%m-%d')}") # Use logger
                 return current_dt.strftime('%Y-%m-%d')
             current_dt -= timedelta(days=1)
 
-        logger.error(f"错误：在 {calendar_start} 和 {target_date_str} 之间找不到交易日。") # Use logger
+        logger.error(f"Error: No trading day found between {calendar_start} and {target_date_str}.") # Use logger
         return None
     except Exception as e:
-        logger.error(f"获取交易日历时出错: {e}") # Use logger
+        logger.error(f"Error retrieving trading calendar: {e}") # Use logger
         return None
 
 
-def fetch_historical_data(api, symbol, timeframe, start_date, end_date):
+def fetch_historical_data(api, symbol, timeframe, start_date, end_date, cache_dir='cache'):
     """
-    使用 Alpaca API 获取给定交易品种的历史 K 线数据，并使用 Parquet 格式进行缓存。
+    Fetches historical bar data for a given symbol using the Alpaca API, with Parquet format caching.
 
     Args:
         api (REST): Initialized Alpaca API client.
-        symbol (str): 交易品种代码 (例如, 'SPY')。
-        timeframe (TimeFrame): K 线的时间范围 (例如, TimeFrame.Minute, TimeFrame.Hour, TimeFrame.Day)。
-        start_date (str): 开始日期，格式为 'YYYY-MM-DD' 或 ISO 格式字符串。
-        end_date (str): 结束日期，格式为 'YYYY-MM-DD' 或 ISO 格式字符串。
+        symbol (str): Symbol code (e.g., 'SPY').
+        timeframe (TimeFrame): Bar timeframe (e.g., TimeFrame.Minute, TimeFrame.Hour, TimeFrame.Day).
+        start_date (str): Start date in 'YYYY-MM-DD' or ISO format string.
+        end_date (str): End date in 'YYYY-MM-DD' or ISO format string.
+        cache_dir (str): Directory path for caching data. Defaults to 'cache'.
 
     Returns:
-        pandas.DataFrame: 包含历史 K 线数据的 DataFrame，如果发生错误则返回 None。
+        pandas.DataFrame: DataFrame containing historical bar data, or None if an error occurs.
     """
     # --- Cache Handling ---
+    # Ensure cache directory exists
+    os.makedirs(cache_dir, exist_ok=True)
+    
     # Create a unique filename for the cache
     timeframe_str = str(timeframe).replace("TimeFrame.", "") # Get a string representation like 'Minute'
     cache_filename = f"{symbol}_{timeframe_str}_{start_date}_{end_date}.parquet"
-    cache_filepath = os.path.join(CACHE_DIR, cache_filename)
+    cache_filepath = os.path.join(cache_dir, cache_filename)
 
     # Check if cached file exists
     if os.path.exists(cache_filepath):
         try:
-            logger.info(f"正在从缓存加载数据: {cache_filepath}") # Use logger
+            logger.info(f"Loading data from cache: {cache_filepath}") # Use logger
             bars = pd.read_parquet(cache_filepath)
             # Parquet usually handles timezone better, but double-check
             if not isinstance(bars.index, pd.DatetimeIndex):
@@ -91,15 +92,15 @@ def fetch_historical_data(api, symbol, timeframe, start_date, end_date):
             # Filter again to ensure strict date range after loading from cache
             bars = bars[(bars.index >= pd.Timestamp(start_date, tz='America/New_York')) &
                         (bars.index <= pd.Timestamp(end_date, tz='America/New_York') + timedelta(days=1))]
-            logger.info(f"成功从缓存加载 {len(bars)} 个数据点。") # Use logger
+            logger.info(f"Successfully loaded {len(bars)} data points from cache.") # Use logger
             return bars
         except Exception as e:
-            logger.warning(f"从缓存加载数据时出错: {e}. 将尝试从 API 获取。") # Use logger
+            logger.warning(f"Error loading data from cache: {e}. Will attempt to fetch from API.") # Use logger
             # If loading fails, proceed to fetch from API
 
     # --- Fetch from API (if not cached or cache load failed) ---
     try:
-        logger.info(f"正在从 API 获取 {symbol} 从 {start_date} 到 {end_date} 的 {timeframe} 数据...") # Use logger
+        logger.info(f"Fetching {symbol} {timeframe} data from {start_date} to {end_date} via API...") # Use logger
         # Note: Alpaca's get_bars returns data in UTC.
         start_dt_iso = pd.Timestamp(start_date, tz='America/New_York').tz_convert('UTC').isoformat()
         end_dt_iso = (pd.Timestamp(end_date, tz='America/New_York') + timedelta(days=1) - timedelta(seconds=1)).tz_convert('UTC').isoformat()
@@ -113,7 +114,7 @@ def fetch_historical_data(api, symbol, timeframe, start_date, end_date):
             bars = bars[(bars.index >= pd.Timestamp(start_date, tz='America/New_York')) &
                         (bars.index <= pd.Timestamp(end_date, tz='America/New_York') + timedelta(days=1))]
 
-            logger.info(f"成功从 API 获取 {len(bars)} 个数据点。") # Use logger
+            logger.info(f"Successfully fetched {len(bars)} data points from API.") # Use logger
 
             # --- Add Technical Indicators ---
             bars = add_technical_indicators(bars.copy()) # Add indicators here
@@ -123,17 +124,17 @@ def fetch_historical_data(api, symbol, timeframe, start_date, end_date):
                 # Use df.to_parquet. No need to reset index usually.
                 # Specify the engine and potentially compression
                 bars.to_parquet(cache_filepath, engine='pyarrow', compression='snappy') # 'snappy' is a common choice
-                logger.info(f"数据已缓存到: {cache_filepath}") # Use logger
+                logger.info(f"Data cached to: {cache_filepath}") # Use logger
             except Exception as e:
-                logger.warning(f"缓存数据时出错: {e}") # Use logger - Log caching error but continue
+                logger.warning(f"Error caching data: {e}") # Use logger - Log caching error but continue
 
             return bars
         else:
-            logger.warning(f"未获取到 {symbol} 的数据。") # Use logger
+            logger.warning(f"No data retrieved for {symbol}.") # Use logger
             return None # Return None if no data fetched
 
     except Exception as e:
-        logger.error(f"获取 {symbol} 数据时出错: {e}") # Use logger
+        logger.error(f"Error fetching {symbol} data: {e}") # Use logger
         return None
 
 # --- Kalman Filter Function ---

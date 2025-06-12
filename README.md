@@ -153,6 +153,48 @@ This project is a Python-based framework designed to help you build, test, and r
 
 * Matplotlib, Seaborn (for plotting)
 
+## Project Structure
+
+```text
+.
+├── src/
+│   └── patf_trading_framework/
+│       ├── __init__.py                   
+│       ├── backtest_utils.py
+│       ├── broker_handler.py
+│       ├── consistency_validator.py
+│       ├── data_utils.py
+│       ├── exception_handler.py
+│       ├── live_trader.py                
+│       ├── performance_analyzer.py
+│       ├── risk_manager.py
+│       ├── strategies.py
+│       └── websocket_handler.py
+├── scripts/
+│   ├── run_backtests.py                  
+│   ├── run_live_trading.py
+│   └── utils/
+│       └── combine_code.py
+├── tests/
+│   ├── __init__.py
+│   ├── integration/
+│   │   ├── __init__.py                  
+│   │   └── test_broker_integration.py    # (renamed from test_broker_api.py)
+│   └── unit/
+│       ├── __init__.py                   
+│       └── test_performance_analyzer.py  # (will be added later)
+├── output/
+│   ├── cache/
+│   ├── charts/
+│   └── logs/
+├── config.yml                            # (new)
+├── .env
+├── .gitignore
+├── environment.yml
+├── pyproject.toml
+└── README.md
+```
+
 ## Disclaimer
 
 This project is for educational and research purposes only. Trading financial markets involves substantial risk of loss and is not suitable for every investor. The authors and contributors are not responsible for any financial losses incurred by using this software. Always use paper trading accounts for testing and understand the risks before trading with real money.
