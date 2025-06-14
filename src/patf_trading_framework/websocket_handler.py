@@ -88,7 +88,7 @@ class WebSocketDataHandler:
         """
         try:
             if self.stream:
-                await self.stream.close()
+                await self.stream.stop_ws()
             self.is_connected = False
             logger.info("WebSocket连接已断开")
         except Exception as e:
