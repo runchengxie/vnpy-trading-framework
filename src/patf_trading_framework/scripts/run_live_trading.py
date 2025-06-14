@@ -608,9 +608,9 @@ async def shutdown(sig, loop):
     else:
         logger.info("No other outstanding tasks to cancel.")
 
-async def main():
+async def run_trading_session():
     """
-    Main asynchronous function for live trading
+    The core asynchronous logic for the live trading session.
     """
     # Load configuration
     app_config = load_app_config()
@@ -626,7 +626,11 @@ async def main():
         logger.error(f"Trading system runtime error: {e}")
         await trading_system.stop_trading()
 
-if __name__ == "__main__":
+def main():
+    """
+    Main entry point for the live trading script.
+    Sets up the asyncio event loop and runs the trading session.
+    """
     loop = asyncio.get_event_loop()
     
     try:
@@ -638,7 +642,7 @@ if __name__ == "__main__":
         signal.signal(signal.SIGTERM, lambda s, f: asyncio.create_task(shutdown(s, loop)))
     
     try:
-        loop.run_until_complete(main())
+        loop.run_until_complete(run_trading_session())
     except asyncio.CancelledError:
         logger.info("Main task was cancelled.")
     finally:
@@ -650,3 +654,7 @@ if __name__ == "__main__":
         
         logger.info("Event loop closed.")
         loop.close()
+
+
+if __name__ == "__main__":
+    main()
