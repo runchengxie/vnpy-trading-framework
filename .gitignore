@@ -15,6 +15,6 @@ __pycache__/
 .vscode/
 .idea/
 
-# Miscellaneous / debugging
+# Miscellaneous / debugging and GENERATED OUTPUT
 full_code_text.txt
-logs/
+/output/

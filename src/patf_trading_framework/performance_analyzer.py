@@ -399,60 +399,60 @@ class PerformanceAnalyzer:
     
     def plot_performance_charts(self, save_path: str = None):
         """
-        绘制性能图表
+        Plot performance charts
         
         Args:
-            save_path: 保存路径，如果为None则显示图表
+            save_path: Save path, if None then display charts
         """
         if not self.portfolio_values:
-            logger.warning("没有组合价值数据，无法绘制图表")
+            logger.warning("No portfolio value data available for plotting")
             return
         
-        # 创建子图
+        # Create subplots
         fig, axes = plt.subplots(2, 2, figsize=(15, 10))
-        fig.suptitle('算法交易性能分析', fontsize=16)
+        fig.suptitle('Algorithmic Trading Performance Analysis', fontsize=16)
         
-        # 1. 组合价值曲线
+        # 1. Portfolio Value Over Time
         portfolio_df = pd.DataFrame(self.portfolio_values, columns=['timestamp', 'value'])
         portfolio_df.set_index('timestamp', inplace=True)
         
         axes[0, 0].plot(portfolio_df.index, portfolio_df['value'])
-        axes[0, 0].axhline(y=self.initial_capital, color='r', linestyle='--', alpha=0.7, label='初始资金')
-        axes[0, 0].set_title('组合价值变化')
-        axes[0, 0].set_ylabel('价值')
+        axes[0, 0].axhline(y=self.initial_capital, color='r', linestyle='--', alpha=0.7, label='Initial Capital')
+        axes[0, 0].set_title('Portfolio Value Over Time')
+        axes[0, 0].set_ylabel('Value')
         axes[0, 0].legend()
         axes[0, 0].grid(True, alpha=0.3)
         
-        # 2. 回撤曲线
+        # 2. Drawdown Curve
         cumulative_returns = portfolio_df['value'] / self.initial_capital
         running_max = cumulative_returns.expanding().max()
         drawdown = (cumulative_returns - running_max) / running_max
         
         axes[0, 1].fill_between(drawdown.index, drawdown, 0, alpha=0.3, color='red')
         axes[0, 1].plot(drawdown.index, drawdown, color='red')
-        axes[0, 1].set_title('回撤曲线')
-        axes[0, 1].set_ylabel('回撤比例')
+        axes[0, 1].set_title('Drawdown Curve')
+        axes[0, 1].set_ylabel('Drawdown Ratio')
         axes[0, 1].grid(True, alpha=0.3)
         
-        # 3. 收益率分布
+        # 3. Returns Distribution
         returns = self.calculate_returns()
         if len(returns) > 0:
             axes[1, 0].hist(returns, bins=50, alpha=0.7, edgecolor='black')
-            axes[1, 0].axvline(returns.mean(), color='red', linestyle='--', label=f'均值: {returns.mean():.4f}')
-            axes[1, 0].set_title('收益率分布')
-            axes[1, 0].set_xlabel('日收益率')
-            axes[1, 0].set_ylabel('频次')
+            axes[1, 0].axvline(returns.mean(), color='red', linestyle='--', label=f'Mean: {returns.mean():.4f}')
+            axes[1, 0].set_title('Returns Distribution')
+            axes[1, 0].set_xlabel('Daily Returns')
+            axes[1, 0].set_ylabel('Frequency')
             axes[1, 0].legend()
             axes[1, 0].grid(True, alpha=0.3)
         
-        # 4. 滚动夏普比率
+        # 4. Rolling Sharpe Ratio
         if len(returns) >= 30:
             rolling_sharpe = returns.rolling(window=30).mean() / returns.rolling(window=30).std() * np.sqrt(252)
             axes[1, 1].plot(rolling_sharpe.index, rolling_sharpe)
             axes[1, 1].axhline(y=0, color='black', linestyle='-', alpha=0.3)
-            axes[1, 1].axhline(y=1, color='green', linestyle='--', alpha=0.7, label='夏普比率=1')
-            axes[1, 1].set_title('滚动夏普比率 (30天)')
-            axes[1, 1].set_ylabel('夏普比率')
+            axes[1, 1].axhline(y=1, color='green', linestyle='--', alpha=0.7, label='Sharpe Ratio = 1')
+            axes[1, 1].set_title('Rolling Sharpe Ratio (30 Days)')
+            axes[1, 1].set_ylabel('Sharpe Ratio')
             axes[1, 1].legend()
             axes[1, 1].grid(True, alpha=0.3)
         
@@ -460,7 +460,7 @@ class PerformanceAnalyzer:
         
         if save_path:
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
-            logger.info(f"性能图表已保存到: {save_path}")
+            logger.info(f"Performance chart saved to: {save_path}")
         else:
             plt.show()
         
