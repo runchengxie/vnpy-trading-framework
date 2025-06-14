@@ -24,12 +24,7 @@ from patf_trading_framework.consistency_validator import ConsistencyValidator
 from patf_trading_framework.broker_handler import BrokerAPIHandler
 from patf_trading_framework.live_trader import LiveMeanReversionStrategy, TradingState
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
+# Logger will be configured in main() after loading config
 logger = logging.getLogger(__name__)
 
 class EnhancedTradingSystem:
@@ -608,13 +603,10 @@ async def shutdown(sig, loop):
     else:
         logger.info("No other outstanding tasks to cancel.")
 
-async def run_trading_session():
+async def run_trading_session(app_config):
     """
     The core asynchronous logic for the live trading session.
     """
-    # Load configuration
-    app_config = load_app_config()
-    
     # Create trading system
     trading_system = EnhancedTradingSystem(app_config)
     
@@ -631,6 +623,22 @@ def main():
     Main entry point for the live trading script.
     Sets up the asyncio event loop and runs the trading session.
     """
+    # 1. First load configuration
+    app_config = load_app_config()
+    
+    # 2. Use loaded configuration to set up logging system
+    log_config = app_config.get('logging', {})
+    log_level = log_config.get('level', 'INFO').upper()
+    logging.basicConfig(
+        level=getattr(logging, log_level, logging.INFO),
+        format=log_config.get('format', '%(asctime)s - %(name)s - %(levelname)s - %(message)s'),
+        datefmt=log_config.get('datefmt', '%Y-%m-%d %H:%M:%S')
+    )
+    
+    # 3. Get logger instance after configuration
+    global logger
+    logger = logging.getLogger(__name__)
+    
     loop = asyncio.get_event_loop()
     
     try:
@@ -642,7 +650,7 @@ def main():
         signal.signal(signal.SIGTERM, lambda s, f: asyncio.create_task(shutdown(s, loop)))
     
     try:
-        loop.run_until_complete(run_trading_session())
+        loop.run_until_complete(run_trading_session(app_config))
     except asyncio.CancelledError:
         logger.info("Main task was cancelled.")
     finally:

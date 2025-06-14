@@ -10,10 +10,7 @@ import numpy as np # For mean/std calculations
 # Import necessary components from your existing modules
 from .broker_handler import BrokerAPIHandler
 
-# Configure logging
-logging.basicConfig(level=logging.INFO,
-                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-                    datefmt='%Y-%m-%d %H:%M:%S')
+# Logger will be configured by the main script
 logger = logging.getLogger(__name__)
 
 
