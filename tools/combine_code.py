@@ -20,9 +20,8 @@ EXCLUDE_DIRS = {
     '.git',                         # Git 版本控制
     '__pycache__',                  # Python 字节码缓存 (必须排除)
     'patf_trading_framework.egg-info', # Python 打包元数据 (必须排除)
-    'cache',                        # 你自定义的缓存目录
-    'output',                       # 你自定义的输出目录
-    'docs',                         # 文档通常是给用户看的，而不是代码上下文
+    'cache',                        # 自定义的缓存目录
+    'output',                       # 自定义的输出目录
     '.vscode',                      # VSCode 编辑器配置
     '.idea',                        # PyCharm 等 JetBrains IDE 配置
     'venv',                         # Python 虚拟环境
@@ -92,7 +91,6 @@ def combine_project_files():
             for dirpath, dirnames, filenames in os.walk(PROJECT_ROOT):
                 current_dir = Path(dirpath)
                 
-                # --- 排除目录 (关键步骤) ---
                 dirnames[:] = [d for d in dirnames if d not in EXCLUDE_DIRS]
                 
                 for filename in filenames:

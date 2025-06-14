@@ -100,18 +100,22 @@ class LiveMeanReversionStrategy:
             return "sell" if current_position_qty > 0 else "buy"
         else:
             return "hold"
-
+    
     def get_signal_confidence(self) -> float:
-        """Return confidence level of the current signal."""
+        """Return confidence level of the current signal based on Z-score magnitude."""
         if self.current_zscore is None:
             return 0.0
         
-        # Higher absolute z-score means higher confidence
+        # Confidence based on how far the Z-score is from thresholds
         abs_zscore = abs(self.current_zscore)
+        
+        # Higher confidence for stronger signals
         if abs_zscore >= max(abs(self.zscore_upper), abs(self.zscore_lower)):
-            return min(abs_zscore / 3.0, 1.0)  # Cap at 1.0
+            return min(0.95, 0.5 + abs_zscore * 0.1)  # Cap at 95%
+        elif abs_zscore >= abs(self.exit_threshold):
+            return min(0.8, 0.3 + abs_zscore * 0.1)
         else:
-            return abs_zscore / max(abs(self.zscore_upper), abs(self.zscore_lower))
+            return max(0.1, abs_zscore * 0.2)  # Minimum 10% confidence
 
 
 # --- Phase 1: Basic State Management ---
@@ -126,14 +130,35 @@ class TradingState:
         self.last_known_portfolio_value: float | None = None
         self.last_trade_price: float | None = None
         self.last_bar_close: float | None = None
+        self.positions = {symbol: 0.0}
+        self.cash = 0.0
+        self.latest_prices = {}
+
+    def get_position(self, symbol: str) -> float:
+        """Get current position for a symbol."""
+        return self.positions.get(symbol, 0.0)
+    
+    def get_portfolio_value(self) -> float:
+        """Calculate total portfolio value (cash + positions)."""
+        total_value = self.cash
+        for symbol, quantity in self.positions.items():
+            if symbol in self.latest_prices:
+                total_value += quantity * self.latest_prices[symbol]
+        return total_value
+    
+    def get_positions(self) -> dict:
+        """Get all current positions."""
+        return self.positions.copy()
 
     def update_position(self, new_qty: float):
         logger.info(f"Updating position for {self.symbol} from {self.current_position_qty} to {new_qty}")
         self.current_position_qty = new_qty
+        self.positions[self.symbol] = new_qty
 
     def update_cash_and_value(self, cash: float, value: float):
         self.last_known_cash = cash
         self.last_known_portfolio_value = value
+        self.cash = cash  # Update cash for portfolio calculation
         logger.debug(f"Updated account state: Cash={cash}, PortfolioValue={value}")
 
     def set_active_order(self, order_id: str | None):
@@ -145,15 +170,9 @@ class TradingState:
             self.last_trade_price = price
         elif source == 'bar':
             self.last_bar_close = price
+        # Also update latest_prices for portfolio calculation
+        self.latest_prices[self.symbol] = price
         logger.debug(f"Updated last price ({source}) for {self.symbol} to {price}")
-
-    def get_portfolio_value(self) -> float:
-        """Return the last known portfolio value."""
-        return self.last_known_portfolio_value or 0.0
-
-    def get_positions(self) -> dict:
-        """Return a dictionary containing current positions."""
-        return {self.symbol: self.current_position_qty} if self.current_position_qty != 0 else {}
 
 
 # --- Phase 1: Core Async Loop ---

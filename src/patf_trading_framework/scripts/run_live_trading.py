@@ -144,7 +144,9 @@ class EnhancedTradingSystem:
         """
         try:
             # Data quality check
-            if not self.market_aggregator.validate_data_quality(market_data):
+            price = market_data.get('price', 0.0)
+            volume = market_data.get('volume', 0.0)
+            if not self.risk_manager.validate_market_data(price, volume):
                 logger.warning("Market data quality check failed")
                 return
             
@@ -200,10 +202,8 @@ class EnhancedTradingSystem:
                 return False
             
             # VaR check
-            portfolio_values = [(datetime.now(), self.trading_state.get_portfolio_value())]
-            risk_metrics = self.risk_manager.calculate_portfolio_risk(
-                portfolio_values, current_positions
-            )
+            portfolio_value = self.trading_state.get_portfolio_value()
+            risk_metrics = self.risk_manager.get_risk_summary(portfolio_value)
             
             max_var = self.app_config.get('live_trading', {}).get('risk_limits', {}).get('max_var', 0.05)
             if risk_metrics.get('var_95', 0) > max_var:
@@ -359,11 +359,9 @@ class EnhancedTradingSystem:
             performance_report = self.performance_analyzer.generate_performance_report()
             
             # Risk report
-            portfolio_values = [(datetime.now(), self.trading_state.get_portfolio_value())]
+            portfolio_value = self.trading_state.get_portfolio_value()
             current_positions = self.trading_state.get_positions()
-            risk_metrics = self.risk_manager.calculate_portfolio_risk(
-                portfolio_values, current_positions
-            )
+            risk_metrics = self.risk_manager.get_risk_summary(portfolio_value)
             
             # Exception statistics
             error_statistics = self.exception_handler.get_error_statistics()
@@ -406,7 +404,7 @@ class EnhancedTradingSystem:
         try:
             # Stop WebSocket connection
             if self.websocket_handler:
-                asyncio.create_task(self.websocket_handler.stop_data_stream())
+                asyncio.create_task(self.websocket_handler.disconnect())
             
             # Close all positions (optional)
             current_positions = self.trading_state.get_positions()
