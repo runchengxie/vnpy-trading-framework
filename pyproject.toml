@@ -1,5 +1,3 @@
-# pyproject.toml
-
 [build-system]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
@@ -59,8 +57,8 @@ dev = [
 
 # Define script entry points: allows running scripts directly from the command line after installation.
 [project.scripts]
-run-backtest = "scripts.run_backtests:main"
-run-live = "scripts.run_live_trading:main"
+run-backtest = "patf_trading_framework.scripts.run_backtests:main"
+run-live = "patf_trading_framework.scripts.run_live_trading:main"
 
 
 [project.urls]
@@ -69,9 +67,11 @@ Homepage = "N/A"
 
 # --- Tool-specific configurations ---
 
+# Use the standard src-layout configuration.
+# This tells setuptools that the root for all packages is the 'src' directory.
 [tool.setuptools]
-packages = ["patf_trading_framework"]
 package-dir = {"" = "src"}
+
 
 [tool.black]
 # Black configurations

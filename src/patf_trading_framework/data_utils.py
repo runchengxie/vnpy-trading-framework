@@ -54,7 +54,7 @@ def get_last_trading_day(api_instance, target_date_str):
         return None
 
 
-def fetch_historical_data(api, symbol, timeframe, start_date, end_date, cache_dir='cache'):
+def fetch_historical_data(api, symbol, timeframe, start_date, end_date, cache_dir: str):
     """
     Fetches historical bar data for a given symbol using the Alpaca API, with Parquet format caching.
 

@@ -208,8 +208,19 @@ def main():
     start_date_str = data_config['start_date']
     end_date_str = data_config['end_date']
 
+    # Loading the cache directory from config.yml
+    cache_dir_path = config['paths']['cache_dir']
+    
     logger.info(f"Fetching {ticker} 1-minute data from {start_date_str} to {end_date_str}...")
-    data_1min = fetch_historical_data(api, ticker, TimeFrame.Minute, start_date_str, end_date_str)
+    # Adding the "cache_dir" parameter when calling fetch_historical_data 
+    data_1min = fetch_historical_data(
+        api, 
+        ticker, 
+        TimeFrame.Minute, 
+        start_date_str, 
+        end_date_str,
+        cache_dir=cache_dir_path
+    )
 
     if data_1min is not None and not data_1min.empty:
         logger.info(f"\nOriginal 1-minute data sample (first 5 rows):\n{data_1min.head()}")
