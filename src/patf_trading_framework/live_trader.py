@@ -84,6 +84,35 @@ class LiveMeanReversionStrategy:
 
         return signal
 
+    def generate_signal(self, market_data: dict) -> str:
+        """Generate trading signal based on market data."""
+        current_price = market_data.get('price', 0.0)
+        # Assume no current position for simplicity, or get from trading state
+        current_position_qty = 0.0
+        signal = self.get_signal(current_price, current_position_qty)
+        
+        # Convert signal format to match expected output
+        if signal == "BUY":
+            return "buy"
+        elif signal == "SELL":
+            return "sell"
+        elif signal == "CLOSE":
+            return "sell" if current_position_qty > 0 else "buy"
+        else:
+            return "hold"
+
+    def get_signal_confidence(self) -> float:
+        """Return confidence level of the current signal."""
+        if self.current_zscore is None:
+            return 0.0
+        
+        # Higher absolute z-score means higher confidence
+        abs_zscore = abs(self.current_zscore)
+        if abs_zscore >= max(abs(self.zscore_upper), abs(self.zscore_lower)):
+            return min(abs_zscore / 3.0, 1.0)  # Cap at 1.0
+        else:
+            return abs_zscore / max(abs(self.zscore_upper), abs(self.zscore_lower))
+
 
 # --- Phase 1: Basic State Management ---
 class TradingState:
@@ -117,6 +146,14 @@ class TradingState:
         elif source == 'bar':
             self.last_bar_close = price
         logger.debug(f"Updated last price ({source}) for {self.symbol} to {price}")
+
+    def get_portfolio_value(self) -> float:
+        """Return the last known portfolio value."""
+        return self.last_known_portfolio_value or 0.0
+
+    def get_positions(self) -> dict:
+        """Return a dictionary containing current positions."""
+        return {self.symbol: self.current_position_qty} if self.current_position_qty != 0 else {}
 
 
 # --- Phase 1: Core Async Loop ---

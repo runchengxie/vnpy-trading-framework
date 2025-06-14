@@ -444,17 +444,18 @@ class EnhancedTradingSystem:
 
 def load_app_config(config_path='config.yml'):
     """
-    Load application configuration from YAML file with environment variable substitution
+    Load application configuration from YAML file with environment variable substitution.
+    It assumes the config file is in the current working directory.
     """
-    # Load environment variables from .env file
+    # Load environment variables from .env file, which should also be in the CWD
     load_dotenv()
     
-    # Determine the path to config.yml from the script's location
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    config_file_path = os.path.join(os.path.dirname(script_dir), config_path)
+    # The config file path is now relative to the Current Working Directory,
+    # not the script's location. This is more robust for installed packages.
+    config_file_path = config_path  # Directly use the provided path
     
     try:
-        with open(config_file_path, 'r') as file:
+        with open(config_file_path, 'r', encoding='utf-8') as file:
             config_content = file.read()
         
         # Substitute environment variables
@@ -467,17 +468,18 @@ def load_app_config(config_path='config.yml'):
         # Parse YAML
         config = yaml.safe_load(config_content)
         
-        logger.info(f"Configuration loaded successfully from {config_file_path}")
+        logger.info(f"Configuration loaded successfully from '{config_file_path}' (relative to CWD).")
         return config
         
     except FileNotFoundError:
-        logger.error(f"Configuration file not found: {config_file_path}")
+        logger.error(f"Configuration file not found: {os.path.abspath(config_file_path)}")
+        logger.error("Please ensure you are running this command from the project's root directory.")
         raise
     except yaml.YAMLError as e:
-        logger.error(f"Error parsing YAML configuration: {e}")
+        logger.error(f"Error parsing YAML configuration in '{config_file_path}': {e}")
         raise
     except Exception as e:
-        logger.error(f"Error loading configuration: {e}")
+        logger.error(f"An unexpected error occurred while loading configuration from '{config_file_path}': {e}")
         raise
 
 # Example usage
@@ -492,6 +494,9 @@ async def async_main():
     trading_system = EnhancedTradingSystem(app_config)
     
     try:
+        # Initialize components before any trading operations
+        trading_system.initialize_components()
+        
         # Start live trading (this is just an example, real API keys need to be configured for actual use)
         # await trading_system.start_live_trading()
         
