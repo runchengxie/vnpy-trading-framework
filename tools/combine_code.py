@@ -43,13 +43,13 @@ EXCLUDE_EXTS = {
     '.pdf', '.docx', '.xlsx',
 }
 
-# 4. 排除脚本自己生成的输出文件
+# 4. 排除指定的文件
 EXCLUDE_FILES = {
     OUTPUT_FILENAME,
     '.DS_Store',    # macOS 系统文件
     'Thumbs.db',    # Windows 系统文件
-    # 你的 .gitignore 中也提到了 full_code_text.txt，这里再次确认
-    'full_code_text.txt', 
+    'full_code_text.txt', # 输出文件名
+    '.env'          # 环境变量文件
 }
 
 
