@@ -8,7 +8,7 @@ version = "0.1.0"
 authors = [
   { name="Richard", email="xieruncheng@gmail.com" }
 ]
-description = "A comprehensive Python framework for algorithmic trading strategy development, back-testing, and live trading."
+description = "A collection of quantitative trading strategies for the vn.py platform."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { file="LICENSE" }
@@ -26,22 +26,9 @@ classifiers = [
 ]
 
 # Core dependencies: these are required to run the project.
+# For complete dependencies, install from requirements_vnpy.txt
 dependencies = [
-    "pandas>=1.5",
-    "numpy>=1.25", # Updated to match pandas-ta's requirements
-    "pyyaml",
-    "matplotlib>=3.5",
-    "seaborn>=0.12",
-    "requests>=2.28",
-    "python-dotenv>=0.21",
-    "pyarrow>=11.0",
-    "websockets>=10.0",
-    "pandas-ta",
-    "pykalman",
-    "scipy>=1.8",
-    "alpaca-trade-api",
-    "backtrader",
-    "urllib3" # A dependency of requests and alpaca-trade-api; explicit declaration is safer
+    "vnpy>=3.0.0",
 ]
 
 # Optional dependencies: these allow extra functionality.
@@ -55,10 +42,7 @@ dev = [
     "pre-commit",        # For automatically running checks before commits
 ]
 
-# Define script entry points: allows running scripts directly from the command line after installation.
-[project.scripts]
-run-backtest = "patf_trading_framework.scripts.run_backtests:main"
-run-live = "patf_trading_framework.scripts.run_live_trading:main"
+
 
 
 [project.urls]
@@ -67,10 +51,7 @@ Homepage = "N/A"
 
 # --- Tool-specific configurations ---
 
-# Use the standard src-layout configuration.
-# This tells setuptools that the root for all packages is the 'src' directory.
-[tool.setuptools]
-package-dir = {"" = "src"}
+
 
 
 [tool.black]
