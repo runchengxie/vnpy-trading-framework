@@ -3,18 +3,18 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "patf-trading-framework"
-version = "0.1.0"
+name = "vnpy-trading-framework"
+version = "1.0.0"
 authors = [
   { name="Richard", email="xieruncheng@gmail.com" }
 ]
-description = "A collection of quantitative trading strategies for the vn.py platform."
+description = "A collection of quantitative trading strategies for the vn.py platform, including Mean-Reversion and Trend-Following models."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { file="LICENSE" }
-keywords = ["trading", "algorithmic-trading", "back-testing", "finance", "alpaca"]
+license = { file="LICENSE.txt" }
+keywords = ["vnpy", "trading", "algorithmic-trading", "quantitative-finance", "strategy", "backtesting", "finance", "alpaca"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta", # Beta version
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "License :: OSI Approved :: MIT License",
@@ -25,34 +25,31 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 
-# Core dependencies: these are required to run the project.
-# For complete dependencies, install from requirements_vnpy.txt
+# Core dependencies：required to run the strategies and the scripts of this project
 dependencies = [
-    "vnpy>=3.0.0",
+    "vnpy",
+    "vnpy-ctastrategy",
+    "vnpy-alpaca",
+    "numpy",
+    "pandas",
+    "yfinance",  # 你的 download_data.py 脚本用到了
+    "alpaca-trade-api" # 你的 download_data.py 脚本用到了
 ]
 
-# Optional dependencies: these allow extra functionality.
-# 'dev' includes all tools required for development, testing, and linting.
-# Use 'pip install -e .[dev]' to install.
+# Optional dependencies for development
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.0",       # For running tests
-    "black",             # Code formatting tool
-    "pylint",            # Code static analysis tool
-    "pre-commit",        # For automatically running checks before commits
+    "pytest>=7.0",
+    "black",
+    "pylint",
+    "pre-commit",
 ]
 
-
-
-
 [project.urls]
-Homepage = "N/A"
-"Bug Tracker" = "N/A"
+Homepage = "https://github.com/your-repo/your-project"  
+"Bug Tracker" = "https://github.com/your-repo/your-project/issues"
 
-# --- Tool-specific configurations ---
-
-
-
+# --- tools ---
 
 [tool.black]
 # Black configurations
