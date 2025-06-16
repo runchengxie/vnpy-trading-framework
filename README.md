@@ -1,260 +1,229 @@
-# Python Algorithmic Trading Framework
+# VN.py Trading Framework
 
-This project is a Python-based framework designed to help you build, test, and run algorithmic trading strategies. It provides tools for handling market data, managing risks, analyzing performance, and connecting to a (paper) trading account, primarily using the Alpaca API.
+基于 VN.py 的量化交易框架，提供完整的策略开发、回测和实盘交易解决方案。
 
-## What Can You Do With This?
+## 项目特点
 
-* **Develop Trading Strategies:** Create your own automated trading rules. Examples included:
+- 🚀 **专业级交易框架**: 基于成熟的 VN.py 框架构建
+- 📈 **多策略支持**: 内置趋势跟踪、均值回归、自定义比率等策略
+- 🔄 **完整工作流**: 从策略开发到回测再到实盘交易的完整流程
+- 🛡️ **风险控制**: 内置多层风险管理机制
+- 🎯 **多市场支持**: 支持股票、期货、数字货币等多个市场
+- 📊 **实时监控**: 提供实时性能监控和异常处理
 
-  * EMA Crossover (Trend Following)
+## Why vn.py?
 
-  * Z-Score Mean Reversion
+By building upon the `vn.py` platform, we gain several key advantages:
 
-* Custom Ratio Strategy
+* **Production-Grade Stability:** Leverages a mature, industry-tested event-driven engine suitable for live trading.
+* **Unified Brokerage Access:** Connects to a wide range of domestic and international brokers (including Alpaca for paper/live trading) through a unified gateway interface.
+* **Integrated Toolkit:** Provides an "all-in-one" solution with built-in modules for backtesting, risk management, data management, and a graphical user interface (GUI).
+* **Focus on Strategy:** Frees the developer from handling low-level details like WebSocket connections, order management, and API quirks, allowing for a pure focus on strategy logic.
 
-* **Back-test Strategies:** Test your strategies on historical market data to see how they would have performed.
+## A Note on "CTA Strategy" for Stock Trading
+You will notice that vn.py refers to its primary single-asset strategy module as CTA Strategy (Commodity Trading Advisor). While historically associated with futures, in the context of vn.py, this module serves as a universal engine for any strategy based on sequential bar (K-line) data. It is the standard and correct module for implementing technical analysis-based strategies for stocks, as well as for futures and cryptocurrencies.
 
-* **Optimize Parameters:** Find the best settings for your strategy's indicators.
+Think of "CTA Strategy" simply as "Single-Symbol, Bar-Based Algorithmic Strategy".
 
-* **Live/Paper Trading:** Connect to Alpaca (a brokerage API) to run your strategies with real-time data (using a paper trading account is highly recommended for testing).
+## Core Strategies Implemented
 
-* **Manage Data:** Fetch historical data, add technical indicators (like Moving Averages, ADX), and even apply data smoothing techniques (like Kalman Filter).
+This repository contains the following strategies, all implemented as `vn.py` CTA Strategy templates, making them perfectly suited for stock trading:
 
-* **Control Risk:** Implement basic risk management rules.
+* **Mean Reversion (Z-Score)**
+  * **Logic:** A classic mean-reversion strategy that enters positions when an asset's price deviates significantly from its short-term moving average, as measured by a Z-Score.
+  * **Signal:** Buys when the Z-Score falls below a lower threshold (e.g., -2.0) and sells when it rises above an upper threshold (e.g., +2.0).
+  * **File:** `strategies/cta_zscore_strategy.py`
 
-* **Analyze Performance:** Get detailed reports on how well your strategies are doing (e.g., profits, losses, Sharpe Ratio, Drawdown).
+* **Trend Following (EMA Crossover + ADX Filter)**
+  * **Logic:** A trend-following strategy that uses the crossover of two Exponential Moving Averages (EMA) to identify trend direction, with an Average Directional Index (ADX) filter to ensure trend strength.
+  * **Signal:** Generates a buy signal on a "golden cross" (short EMA crosses above long EMA) only if the ADX is above a certain threshold, indicating a strong trend.
+  * **File:** `strategies/cta_ema_adx_strategy.py`
 
-* **Handle Errors:** The system has built-in error handling to make it more robust.
+* **Custom Ratio Strategy**
+  * **Logic:** A unique strategy that generates signals based on the ratio of the current price to a long-term moving average. It aims to capture deviations from the long-term mean.
+  * **Signal:** Buys when the price-to-average ratio drops below a threshold (e.g., 0.98) and sells when it exceeds another (e.g., 1.02).
+  * **File:** `strategies/cta_custom_ratio_strategy.py`
 
-* **Check Consistency:** Compare how your strategy performs in back-testing versus live (paper) trading.
+## Platform Architecture
 
-## Key Features
+This project operates as a set of plugins for the `vn.py` ecosystem. The core components of `vn.py` handle all the heavy lifting.
 
-* **Strategy Library:** Includes several common trading strategy types.
+```mermaid
+flowchart LR
+    subgraph User
+        direction TB
+        A[You<br>Trader/Developer]
+    end
 
-* **Backtesting Engine:** Uses the popular `backtrader` library.
+    subgraph vn_py_Platform ["vn.py Platform"]
+        direction LR
+        B(CTA Strategy App) --> C{Event Engine};
+        D(Alpaca Gateway) --> C;
+        E(Data Manager) --> C;
+        F(Risk Manager) --> C;
+    end
+    
+    subgraph Your_Code [Your Custom Strategies]
+        G[cta_zscore_strategy.py]
+        H[cta_ema_adx_strategy.py]
+    end
 
-* **Alpaca API Integration:** For fetching data, placing orders, and managing your (paper) account.
+    subgraph Broker
+        I[Alpaca API]
+    end
 
-* **Real-time Data:** Uses WebSockets to get live market data from Alpaca.
+    A -- "Run & Configure" --> vn_py_Platform;
+    Your_Code -- "Are loaded by" --> B;
+    D -- "Communicates with" --> I;
+    
+    classDef yourcode fill:#e6ffed,stroke:#333,stroke-width:2px;
+    class G,H yourcode
+```
 
-* **Data Processing:** Tools to clean, resample, and add technical indicators to data.
-
-* **Risk Management Module:** Basic tools to assess and manage trading risks.
-
-* **Performance Analytics:** Detailed metrics and charts to evaluate strategy performance.
-
-* **Robust Error Handling:** Mechanisms to catch and manage common trading system errors.
-
-## Core Modules (What Each File Does)
-
-* `main.py`: The main script to run back-tests and strategy optimizations.
-
-* `strategies.py`: Contains the definitions for different trading strategies (e.g., EMA Crossover, Z-Score).
-
-* `data_utils.py`: Functions for fetching, caching, and processing market data (e.g., adding indicators).
-
-* `backtest_utils.py`: Helper functions to analyze the results from back-testing.
-
-* `broker_handler.py`: Manages communication with the Alpaca trading API (placing orders, getting account info).
-
-* `live_trader.py`: Contains the logic for running strategies in a live (paper) trading environment.
-
-* `websocket_handler.py`: Handles real-time market data streams from Alpaca via WebSockets.
-
-* `risk_manager.py`: Implements risk management rules and calculations (like VaR).
-
-* `performance_analyzer.py`: Calculates and reports on trading performance metrics.
-
-* `exception_handler.py`: Provides a system for managing errors and exceptions gracefully.
-
-* `consistency_validator.py`: Tools to compare back-test results with live trading performance.
-
-* `test_broker_api.py`: Script to test the connection and basic functions of the Alpaca API.
-
-## Setup
+## Setup and Installation
 
 1. **Prerequisites:**
+    * Python (version 3.10 or higher)
+    * Conda (highly recommended for environment management)
 
-    * Python (version 3.10 or as specified in `environment.yml`)
-
-    * Conda (recommended for managing environments)
-
-2. **Clone the Repository:**
+2. **Clone This Repository:**
 
     ```bash
     git clone <your-repository-url>
     cd <your-repository-folder>
     ```
 
-3. **Create Conda Environment:**
+3. **Install vn.py:**
+    We will install the official `vn.py` package. It's recommended to do this in a clean virtual environment.
 
     ```bash
-    conda env create -f environment.yml
-    conda activate cqf-algo-trading
+    # Create and activate a conda environment
+    conda create -n vnpy_trading python=3.10 -y
+    conda activate vnpy_trading
+    
+    # Install vn.py and its dependencies
+    pip install vnpy
     ```
 
-4. **API Keys (Alpaca):**
+4. **Load Custom Strategies:**
+    Copy the strategy files from this project's `strategies` directory into the `vn.py` strategies folder. You can find the `vn.py` folder path by running a simple python command:
 
-    * You'll need API keys from Alpaca (you can get these for free for paper trading).
+    ```python
+    import vnpy
+    import os
+    print(os.path.dirname(vnpy.__file__))
+    ```
 
-    * Create a file named `.env` in the root project directory.
+    Navigate to that directory, and place your strategy files inside the `vnpy/app/cta_strategy/strategies/` subfolder.
 
-    * Add your Alpaca API keys to this `.env` file like this:
+5. **Configure API Keys (Alpaca):**
+    `vn.py` manages configuration through a central JSON file, not a `.env` file.
+    * Run `vnstation` for the first time to generate default configuration files.
+    * Open the configuration file located at `C:\Users\YourUser\.vntrader\vt_setting.json` (on Windows) or `~/.vntrader/vt_setting.json` (on Linux/Mac).
+    * Find the section for `Alpaca` and enter your API keys:
 
-        ```text
-        APCA_API_KEY_ID="YOUR_PAPER_API_KEY_ID"
-        APCA_API_SECRET_KEY="YOUR_PAPER_API_SECRET_KEY"
-        ALPACA_BASE_URL="https://paper-api.alpaca.markets" # For paper trading
-        ```
+    ```json
+    {
+        "api.key": "YOUR_PAPER_API_KEY_ID",
+        "api.secret": "YOUR_PAPER_API_SECRET_KEY",
+        "api.url": "https://paper-api.alpaca.markets",
+        "name": "Alpaca"
+    }
+    ```
 
-    * **Important:** Make sure the `.env` file is listed in your `.gitignore` file to avoid accidentally committing your secret keys!
+    **IMPORTANT:** Ensure `api.url` points to the paper trading endpoint for testing.
 
 ## How to Run
 
-* **Run Back-tests & Optimizations:**
+### 1. Back-testing
+
+You can run back-tests using either the `vn.py` GUI or a script.
+
+**Using the GUI (`VN Station`):**
+
+1. Start the graphical interface:
 
     ```bash
-    python main.py
+    vnstation
     ```
 
-    This will run the predefined backtests and optimizations found in `main.py`. You can modify this file to test different strategies or parameters.
+2. In the main window, click on the CTA策略 (CTA Strategy) module.
 
-* **Run Live (Paper) Trader:**
+3. Use the 数据管理 (Data Manager) tool to import historical stock data. For US stocks via Alpaca, the symbol format is TICKER.STK (e.g., SPY.STK).
+
+4. In the CTA回测 (CTA Back-testing) tab, select your strategy, set the parameters, choose the stock symbol, and click 【开始回测】 (Start Back-testing).
+
+5. The platform will automatically generate performance statistics and charts.
+
+**Using a Script:**
+Use the provided backtesting script to programmatically run backtests:
+
+```bash
+# Run a single strategy backtest
+python scripts/run_backtest.py --strategy EmaAdxStrategy
+
+# Run with custom parameters
+python scripts/run_backtest.py --strategy ZScoreStrategy --symbol AAPL.NASDAQ --start 2023-01-01 --end 2023-12-31
+
+# Run parameter optimization
+python scripts/run_backtest.py --strategy EmaAdxStrategy --optimize
+
+# Run batch backtesting for multiple strategies
+python scripts/run_backtest.py --batch
+```
+
+The script supports various options:
+- `--strategy`: Strategy name (EmaAdxStrategy, ZScoreStrategy, CustomRatioStrategy)
+- `--symbol`: Trading symbol (default: SPY.NASDAQ)
+- `--start`: Start date (YYYY-MM-DD format)
+- `--end`: End date (YYYY-MM-DD format)
+- `--optimize`: Run parameter optimization
+- `--batch`: Run all strategies with predefined settings
+
+### 2. Live (Paper) Trading
+
+1. Start the graphical interface:
 
     ```bash
-    python live_trader.py
+    vnstation
     ```
 
-    This will start the live trading bot. It's set up for **paper trading** by default.
-    **WARNING:** Be very careful if you decide to switch to live money trading. Understand the risks involved.
+2. Open the CTA策略 (CTA Strategy) module.
 
-* **Test Alpaca API Connection:**
+3. On the left panel, click 【添加策略】 (Add Strategy). In the form, select your strategy class, assign it a unique instance name, and choose the stock symbol (e.g., AAPL.STK).
 
-    ```bash
-    python test_broker_api.py
-    ```
+4. On the left panel, click **【添加策略】**, select your strategy class (e.g., `ZScoreStrategy`), and configure its parameters.
 
-    This script helps verify that your Alpaca API keys are working and you can connect to their services.
+5. Once the strategy instance is created, select it from the list.
 
-## Technologies Used
+6. Click **【初始化】** to prepare the strategy, then **【启动】** to begin trading.
 
-* Python
+7. The GUI will display real-time logs, trades, and position updates.
 
-* Backtrader (for backtesting)
-
-* Pandas, NumPy (for data manipulation)
-
-* Alpaca Trade API (for brokerage interaction)
-
-* Pandas TA (for technical indicators)
-
-* Websockets (for real-time data)
-
-* Matplotlib, Seaborn (for plotting)
-
-## Project Structure
+## Project Structure (Simplified for vn.py)
 
 ```text
 .
-├── src/
-│   └── patf_trading_framework/
-│       ├── __init__.py                   
-│       ├── backtest_utils.py
-│       ├── broker_handler.py
-│       ├── consistency_validator.py
-│       ├── data_utils.py
-│       ├── exception_handler.py
-│       ├── live_trader.py                
-│       ├── performance_analyzer.py
-│       ├── risk_manager.py
-│       ├── strategies.py
-│       └── websocket_handler.py
+├── strategies/
+│   ├── cta_zscore_strategy.py        # Z-Score mean reversion strategy
+│   ├── cta_ema_adx_strategy.py       # EMA crossover with ADX filter
+│   └── cta_custom_ratio_strategy.py  # Custom ratio-based strategy
 ├── scripts/
-│   ├── run_backtests.py                  
-│   ├── run_live_trading.py
-│   └── utils/
-│       └── combine_code.py
-├── tests/
-│   ├── __init__.py
-│   ├── integration/
-│   │   ├── __init__.py                  
-│   │   └── test_broker_integration.py    # (renamed from test_broker_api.py)
-│   └── unit/
-│       ├── __init__.py                   
-│       └── test_performance_analyzer.py  # (will be added later)
-├── output/
-│   ├── cache/
-│   ├── charts/
-│   └── logs/
-├── config.yml                            # (new)
-├── .env
-├── .gitignore
-├── environment.yml
-├── pyproject.toml
+│   ├── run_backtest.py               # Backtesting script with optimization
+│   ├── run_live_trading.py           # Live/paper trading script
+│   ├── download_data.py              # Historical data download utility
+│   ├── install.py                    # Framework installation script
+│   ├── test_framework.py             # Framework testing and validation
+│   └── quick_start.py                # Quick start demonstration
+├── config/
+│   ├── backtest_config.json          # Backtesting configuration
+│   └── live_trading_config.json      # Live trading configuration
+├── docs/
+│   └── project_requirement.md        # Project requirements and specifications
+├── requirements_vnpy.txt             # VN.py framework dependencies
 └── README.md
 ```
 
 ## Disclaimer
 
 This project is for educational and research purposes only. Trading financial markets involves substantial risk of loss and is not suitable for every investor. The authors and contributors are not responsible for any financial losses incurred by using this software. Always use paper trading accounts for testing and understand the risks before trading with real money.
-
-```mermaid
-flowchart LR
-  %% ----- Live Trading Flow -----
-  subgraph Live_Trading["Live Trading System"]
-    direction TB
-
-    ETS[EnhancedTradingSystem]
-    Broker[BrokerAPIHandler]
-    WS[WebSocketDataHandler]
-    Agg[MarketDataAggregator]
-    Strat[LiveMeanReversionStrategy]
-    Risk[RiskManager]
-    Perf[PerformanceAnalyzer]
-    Exc[ExceptionHandler]
-    Cons[ConsistencyValidator]
-
-    ETS -->|initialize_components| Broker
-    ETS -->|initialize_components| WS
-    ETS -->|initialize_components| Agg
-    ETS -->|initialize_components| Strat
-    ETS -->|initialize_components| Risk
-    ETS -->|initialize_components| Perf
-    ETS -->|initialize_components| Exc
-    ETS -->|initialize_components| Cons
-
-    WS -->|stream data| ETS
-    Agg -->|validate & aggregate| ETS
-    ETS -->|process_market_data| Strat
-    Strat -->|signal| ETS
-    ETS -->|risk_check| Risk
-    ETS -->|execute_trade| Broker
-    ETS -->|record_trade| Perf
-    ETS -->|update_metrics| Perf
-    ETS -->|handle_errors| Exc
-    ETS -->|run_validation| Cons
-  end
-
-  %% ----- Backtesting & Validation -----
-  subgraph Backtest_and_Validation["Backtesting + Validation"]
-    direction TB
-
-    BT_Utils[backtest_utils.py]
-    Data_Utils[data_utils.py]
-    Cons_Val[ConsistencyValidator]
-
-    BT_Utils -->|generate backtest_data| Cons_Val
-    Data_Utils -->|fetch historical data| BT_Utils
-    ETS -->|live_data| Cons_Val
-    Cons_Val -->|report| ETS
-  end
-
-  %% ----- Annotations -----
-  classDef core fill:#f9f,stroke:#333,stroke-width:1px;
-  class ETS,Broker,WS,Agg,Strat,Risk,Perf,Exc,Cons,BT_Utils,Data_Utils core;
-
-  %% ----- Legend -----
-  click Live_Trading "https://mermaid-js.github.io/mermaid-live-editor/" "Live Trading Group"
-  click Backtest_and_Validation "https://mermaid-js.github.io/mermaid-live-editor/" "Backtest & Validation Group"
-```
