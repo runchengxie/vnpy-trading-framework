@@ -101,7 +101,7 @@ def combine_project_files():
                     
                     if not is_likely_text_file(filepath):
                         relative_path_str = filepath.relative_to(PROJECT_ROOT).as_posix()
-                        # print(f"  - Skipping binary/excluded file: {relative_path_str}")
+                        print(f"  - Skipping binary/excluded file: {relative_path_str}")
                         files_skipped_count += 1
                         continue
                     

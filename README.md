@@ -1,18 +1,15 @@
 # VN.py 量化交易框架
 
-这是一个基于知名开源项目 VN.py 构建的量化交易框架，旨在提供一套完整的策略开发、历史回测及实盘交易解决方案。
+这是一个基于知名开源项目 [VN.py](https://www.vnpy.com) 构建的量化交易框架，旨在提供一套完整的策略开发、历史回测及实盘交易解决方案。
 
 ## 为何选择 vn.py？
 
 该项目基于 vn.py 平台构建，具备以下核心优势：
 
-* **生产级别的稳定性**：vn.py 拥有成熟且经过业界检验的事件驱动引擎，能够确保实盘交易环境的稳定可靠。
-
-* **统一的交易接口**：通过统一的网关接口，可以无缝接入多家国内外券商及交易平台（例如，本项目中用于模拟和实盘交易的 Alpaca 平台）。
-
-* **一体化的工具套件**：vn.py 提供“全家桶”式的解决方案，内置了回测、风控、数据管理和图形用户界面（GUI）等核心功能模块。
-
-* **专注于策略研发**：框架处理了所有底层技术细节，例如 WebSocket 连接、订单管理和各家 API 的特性差异，让开发者可以心无旁骛地专注于策略逻辑的开发。
+*   **生产级别的稳定性**：vn.py 拥有成熟且经过业界检验的事件驱动引擎，能够确保实盘交易环境的稳定可靠。
+*   **统一的交易接口**：通过统一的网关接口，可以无缝接入多家国内外券商及交易平台（例如，本项目中用于模拟和实盘交易的 Alpaca 平台）。
+*   **一体化的工具套件**：vn.py 提供“全家桶”式的解决方案，内置了回测、风控、数据管理和图形用户界面（GUI）等核心功能模块。
+*   **专注于策略研发**：框架处理了所有底层技术细节，例如 WebSocket 连接、订单管理和各家 API 的特性差异，让开发者可以心无旁骛地专注于策略逻辑的开发。
 
 ## 关于“CTA策略”模块的特别说明
 
@@ -22,27 +19,34 @@
 
 您可以简单地将“CTA策略”理解为：**“基于K线（Bar）的单标的算法策略”**。
 
-## 核心策略实现
+## 核心策略实现: `IntradayMomentumReversalStrategy`
 
-* 技术指标 : RSI(6) + KDJ(9,3,3)
-* 交易标的 : 支持TQQQ等任意标的
-* 时间框架 : 1分钟K线数据
-* 日内交易 : 严格不持有隔夜仓位
+本框架实现了一个日内动量反转策略，该策略严格不持有隔夜仓位。
+
+*   **技术指标**: RSI(6) + KDJ(9,3,3)
+*   **交易标的**: 支持TQQQ、SPY等任意标的
+*   **时间框架**: 1分钟K线数据
+*   **日内交易**: 严格不持有隔夜仓位
 
 ### 交易逻辑
 
-做空信号 (超买反转) :
+**做空信号 (超买反转):**
 
-* 监控条件: RSI > 80 且 KDJ J > 100
-* 入场信号: RSI下降 或 KDJ J下降
-* 仓位分配: 价格≥开盘价(10%) / 价格<开盘价(30%)
-* 平仓条件: RSI < 20 或 KDJ J < 0
-做多信号 (超卖反转) :
+*   **监控条件**: `RSI > 80` 且 `KDJ J > 100`
+*   **入场信号**: RSI值开始下降 或 KDJ J值开始下降
+*   **仓位分配**:
+    *   价格 ≥ 开盘价，分配10%资金
+    *   价格 < 开盘价，分配30%资金
+*   **平仓条件**: `RSI < 20` 或 `KDJ J < 0`
 
-* 监控条件: RSI < 20 且 KDJ J < 0
-* 入场信号: RSI上升 或 KDJ J上升
-* 仓位分配: 价格≥开盘价(30%) / 价格<开盘价(10%)
-* 平仓条件: RSI > 80 或 KDJ J > 100
+**做多信号 (超卖反转):**
+
+*   **监控条件**: `RSI < 20` 且 `KDJ J < 0`
+*   **入场信号**: RSI值开始上升 或 KDJ J值开始上升
+*   **仓位分配**:
+    *   价格 ≥ 开盘价，分配30%资金
+    *   价格 < 开盘价，分配10%资金
+*   **平仓条件**: `RSI > 80` 或 `KDJ J > 100`
 
 ## 平台架构
 
@@ -64,8 +68,7 @@ flowchart LR
     end
     
     subgraph 自定义策略 [您的自定义策略]
-        G[cta_zscore_strategy.py]
-        H[cta_ema_adx_strategy.py]
+        G[intraday_momentum_reversal_strategy.py]
     end
 
     subgraph 券商
@@ -77,150 +80,144 @@ flowchart LR
     D -- "与API通信" --> I;
     
     classDef yourcode fill:#e6ffed,stroke:#333,stroke-width:2px;
-    class G,H yourcode
+    class G yourcode
 ```
 
 ## 环境配置与安装
 
-1. **环境要求**：
-    * Python (3.10或更高版本)
-    * Conda (强烈推荐，用于管理Python环境)
+1.  **环境要求**:
+    *   Python (3.10或更高版本)
+    *   Conda (强烈推荐，用于管理Python环境)
 
-2. **克隆本代码库**：
+2.  **克隆本代码库**:
 
     ```bash
-    git clone <https://github.com/runchengxie/vnpy-trading-framework>
-    cd <https://github.com/runchengxie/vnpy-trading-framework>
+    git clone https://github.com/runchengxie/vnpy-trading-framework.git
+    cd vnpy-trading-framework
     ```
 
-3. **安装 vn.py**：
-    我们将在一个独立的虚拟环境中安装官方的 `vn.py` 包，这是推荐的最佳实践。
+3.  **创建虚拟环境**:
 
     ```bash
     # 创建并激活 conda 虚拟环境
     conda create -n vnpy_trading python=3.10 -y
     conda activate vnpy_trading
-    
-    # 安装 vn.py 及其依赖项
-    pip install vnpy
     ```
 
-4. **加载自定义策略**：
-    您需要将本项目的策略文件复制到 `vn.py` 的策略文件夹中。要找到 `vn.py` 的安装路径，可以运行以下Python命令：
+4.  **安装依赖**:
+    本项目使用 `pyproject.toml` 管理依赖。您可以通过一个命令安装框架及其所有依赖。可编辑模式 (`-e`) 非常适合开发。
 
-    ```python
-    import vnpy
-    import os
-    print(os.path.dirname(vnpy.__file__))
+    ```bash
+    # 以可编辑模式安装本项目
+    pip install -e .
     ```
+    该命令会自动读取 `pyproject.toml` 文件，安装 `vn.py`、所有必需的网关（包括从GitHub指定版本的 `vnpy-alpaca`）以及其他库。同时，它会自动将 `strategies` 目录注册为一个可导入的包，**无需手动复制任何策略文件**。
 
-    然后，将本项目 `strategies` 目录下的策略文件复制到上述路径中的 `vnpy/app/cta_strategy/strategies/` 子目录内。
-
-5. **配置 API 密钥 (Alpaca)**：
+5.  **配置 API 密钥 (Alpaca)**:
     `vn.py` 通过一个中心的JSON文件来管理配置，而非 `.env` 文件。
-    * 首次运行 `vnstation` 后，系统会自动在用户目录下生成默认的配置文件。
-    * 打开该配置文件。在 Windows 系统中，路径通常是 `C:\Users\YourUser\.vntrader\vt_setting.json`；在 Linux 或 macOS 系统中，路径是 `~/.vntrader/vt_setting.json`。
-    * 找到 `Alpaca` 相关的配置部分，填入您的 API 密钥：
+    *   首次运行 `vnstation` 后，系统会自动在用户目录下生成默认的配置文件。
+    *   打开该配置文件。在 Windows 系统中，路径通常是 `C:\Users\YourUser\.vntrader\vt_setting.json`；在 Linux 或 macOS 系统中，路径是 `~/.vntrader/vt_setting.json`。
+    *   找到 `Alpaca` 相关的配置部分，填入您的 API 密钥：
 
     ```json
     {
-        "api.key": "您的模拟盘API Key",
-        "api.secret": "您的模拟盘API Secret",
-        "api.url": "https://paper-api.alpaca.markets",
-        "name": "Alpaca"
+        "Alpaca.key": "您的模拟盘API Key",
+        "Alpaca.secret": "您的模拟盘API Secret",
+        "Alpaca.server": "PAPER"
     }
     ```
 
-    **重要提示**：为安全起见，在测试阶段请确保 `api.url` 指向的是 Alpaca 的**模拟盘**交易地址。
+    **重要提示**：为安全起见，在测试阶段请确保 `Alpaca.server` 指向的是 Alpaca 的**模拟盘**（PAPER）交易服务器。
 
 ## 如何运行
 
-### 1. 策略回测
+### 1. 下载历史数据
 
-您可以通过 `vn.py` 的图形化界面或我们提供的脚本来运行回测。
-
-**使用图形化界面 (`VN Station`)**：
-
-1. 在命令行启动图形化界面：
-
-    ```bash
-    vnstation
-    ```
-
-2. 在主窗口中，点击加载 **CTA策略** 模块。
-
-3. 使用 **数据管理** 工具导入您需要的股票历史数据。请注意，通过 Alpaca 接口获取美股数据时，合约代码的格式为“股票代码.STK”，例如“SPY.STK”。
-
-4. 切换到 **CTA回测** 界面，选择您的策略、设置参数、选定股票代码，然后点击 **【开始回测】** 按钮。
-
-5. 平台将自动完成回测，并生成详细的业绩统计和图表。
-
-**使用脚本**：
-您也可以使用我们提供的脚本来自动执行回测：
+在回测之前，您需要准备历史数据。使用项目提供的脚本来下载：
 
 ```bash
-# 运行单个策略回测
-python scripts/run_backtest.py --strategy EmaAdxStrategy
+# 从雅虎财经下载SPY最近一年的日线数据
+python scripts/download_data.py --symbol SPY --days 365 --source yahoo --interval 1d
 
-# 使用自定义参数运行回测
-python scripts/run_backtest.py --strategy ZScoreStrategy --symbol AAPL.NASDAQ --start 2023-01-01 --end 2023-12-31
+# 下载AAPL在特定日期范围内的1分钟数据
+python scripts/download_data.py --symbol AAPL --start 2023-01-01 --end 2023-12-31 --interval 1m
 
-# 运行参数优化
-python scripts/run_backtest.py --strategy EmaAdxStrategy --optimize
-
-# 批量回测多个策略
-python scripts/run_backtest.py --batch
+# 查看本地数据库中已有数据的概览
+python scripts/download_data.py --overview
 ```
 
-该脚本支持多种命令行参数：
+### 2. 策略回测
 
-* `--strategy`：策略名称 (EmaAdxStrategy, ZScoreStrategy, CustomRatioStrategy)
-* `--symbol`：交易标的 (默认为 SPY.NASDAQ)
-* `--start`：回测开始日期 (格式: YYYY-MM-DD)
-* `--end`：回测结束日期 (格式: YYYY-MM-DD)
-* `--optimize`：执行参数优化
-* `--batch`：批量运行所有预设策略
+执行回测最可靠的方式是通过 `VN Station` 图形化界面。
 
-### 2. 实盘（模拟）交易
-
-1. 启动图形化界面：
-
+1.  **启动图形化界面**:
+    在您的终端（已激活 `vnpy_trading` 环境），运行：
     ```bash
     vnstation
     ```
 
-2. 打开 **CTA策略** 模块。
+2.  **加载模块**:
+    在主窗口中，点击加载 **CTA策略** 模块。
 
-3. 在左侧的策略管理面板，点击 **【添加策略】**。在弹出的窗口中，选择您的策略类（如 `ZScoreStrategy`），为其实例指定一个唯一的名称，并配置好交易参数和股票代码（如 AAPL.STK）。
+3.  **连接Alpaca**:
+    点击菜单栏的 `系统` -> `连接`，然后选择 `Alpaca`。系统将使用您在 `vt_setting.json` 中配置的密钥进行连接。
 
-4. 创建成功后，新的策略实例会出现在列表中。选中它。
+4.  **进入CTA回测**:
+    切换到 **CTA回测** 界面。
 
-5. 依次点击 **【初始化】** 和 **【启动】** 按钮。
+5.  **配置并运行回测**:
+    *   **策略**: 从下拉列表中选择 `IntradayMomentumReversalStrategy`。
+    *   **代码**: 输入回测用的合约代码，例如 `AAPL.NASDAQ`。
+    *   **参数**: 设置策略参数，如 `rsi_period`, `kdj_period` 等。
+    *   **回测设置**: 设置回测的起止日期、初始资金、手续费率和滑点。
+    *   点击 **【开始回测】** 按钮。
 
-6. 策略启动后，您可以在图形化界面的日志、委托、成交和持仓等窗口中实时监控策略的运行状态。
+6.  平台将自动完成回测，并生成详细的业绩统计和图表。
+
+### 3. 实盘（模拟）交易
+
+1.  同样地，启动 **VN Station** 并加载 **CTA策略** 模块。
+
+2.  **进入CTA交易**:
+    切换到 **CTA交易** 界面。
+
+3.  **添加策略实例**:
+    *   在左侧的策略管理面板，点击 **【添加策略】**。
+    *   在弹出的窗口中，选择您的策略类 `IntradayMomentumReversalStrategy`。
+    *   为该实例指定一个唯一的名称（例如 `IMR_AAPL`）。
+    *   配置好交易参数和合约代码（例如 `AAPL.NASDAQ`）。
+
+4.  **启动策略**:
+    *   新的策略实例会出现在列表中。选中它。
+    *   依次点击 **【初始化】** 和 **【启动】** 按钮。
+
+5.  策略启动后，您可以在图形化界面的日志、委托、成交和持仓等窗口中实时监控策略的运行状态。
+
+### 关于辅助脚本的说明
+
+请注意，`scripts/` 目录下的部分脚本（如 `run_backtest.py`, `run_live_trading.py`, `quick_start.py`）已经**过时**，它们引用了旧的、已不存在的策略名称。**这些脚本未经修改将无法直接运行**。保留它们是为了展示如何实现自动化工作流的参考。若要使用，您需要手动修改其中的策略类名和参数，以匹配 `IntradayMomentumReversalStrategy`。
 
 ## 项目文件结构
 
-```text
+```
 .
-├── strategies/
-│   ├── cta_zscore_strategy.py        # Z-Score均值回归策略
-│   ├── cta_ema_adx_strategy.py       # EMA金叉死叉结合ADX过滤策略
-│   └── cta_custom_ratio_strategy.py  # 自定义价格比率策略
-├── scripts/
-│   ├── run_backtest.py               # 回测及优化脚本
-│   ├── run_live_trading.py           # 实盘/模拟盘运行脚本
-│   ├── download_data.py              # 历史数据下载工具
-│   ├── install.py                    # 框架安装脚本
-│   ├── test_framework.py             # 框架测试与验证脚本
-│   └── quick_start.py                # 快速入门演示脚本
 ├── config/
-│   ├── backtest_config.json          # 回测配置文件
-│   └── live_trading_config.json      # 实盘交易配置文件
-├── docs/
-│   └── project_requirement.md        # 项目需求与规格说明
-├── requirements_vnpy.txt             # VN.py 框架依赖
-└── README.md
+│   ├── backtest_config.json        # 回测配置文件 (已过时)
+│   ├── download_config.json        # 数据下载脚本的配置文件
+│   └── live_trading_config.json    # 实盘交易配置文件 (已过时)
+├── scripts/
+│   ├── download_data.py            # 功能完备的历史数据下载工具
+│   ├── install.py                  # 安装脚本 (已废弃, 请使用 'pip install -e .')
+│   ├── quick_start.py              # 快速入门演示 (需更新)
+│   ├── run_backtest.py             # 回测脚本 (需更新)
+│   ├── run_live_trading.py         # 实盘运行脚本 (需更新)
+│   └── test_framework.py           # 框架测试脚本 (需更新)
+├── strategies/
+│   └── intraday_momentum_reversal_strategy.py  # 日内动量反转策略
+├── .gitignore
+├── LICENSE.txt
+├── pyproject.toml                  # 项目定义与依赖管理文件
+└── README.md                       # 本文件
 ```
 
 ## 免责声明
