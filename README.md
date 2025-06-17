@@ -27,22 +27,7 @@ Think of "CTA Strategy" simply as "Single-Symbol, Bar-Based Algorithmic Strategy
 
 ## Core Strategies Implemented
 
-This repository contains the following strategies, all implemented as `vn.py` CTA Strategy templates, making them perfectly suited for stock trading:
-
-* **Mean Reversion (Z-Score)**
-  * **Logic:** A classic mean-reversion strategy that enters positions when an asset's price deviates significantly from its short-term moving average, as measured by a Z-Score.
-  * **Signal:** Buys when the Z-Score falls below a lower threshold (e.g., -2.0) and sells when it rises above an upper threshold (e.g., +2.0).
-  * **File:** `strategies/cta_zscore_strategy.py`
-
-* **Trend Following (EMA Crossover + ADX Filter)**
-  * **Logic:** A trend-following strategy that uses the crossover of two Exponential Moving Averages (EMA) to identify trend direction, with an Average Directional Index (ADX) filter to ensure trend strength.
-  * **Signal:** Generates a buy signal on a "golden cross" (short EMA crosses above long EMA) only if the ADX is above a certain threshold, indicating a strong trend.
-  * **File:** `strategies/cta_ema_adx_strategy.py`
-
-* **Custom Ratio Strategy**
-  * **Logic:** A unique strategy that generates signals based on the ratio of the current price to a long-term moving average. It aims to capture deviations from the long-term mean.
-  * **Signal:** Buys when the price-to-average ratio drops below a threshold (e.g., 0.98) and sells when it exceeds another (e.g., 1.02).
-  * **File:** `strategies/cta_custom_ratio_strategy.py`
+To be implemented
 
 ## Platform Architecture
 
@@ -200,29 +185,6 @@ The script supports various options:
 
 7. The GUI will display real-time logs, trades, and position updates.
 
-## Project Structure (Simplified for vn.py)
-
-```text
-.
-├── strategies/
-│   ├── cta_zscore_strategy.py        # Z-Score mean reversion strategy
-│   ├── cta_ema_adx_strategy.py       # EMA crossover with ADX filter
-│   └── cta_custom_ratio_strategy.py  # Custom ratio-based strategy
-├── scripts/
-│   ├── run_backtest.py               # Backtesting script with optimization
-│   ├── run_live_trading.py           # Live/paper trading script
-│   ├── download_data.py              # Historical data download utility
-│   ├── install.py                    # Framework installation script
-│   ├── test_framework.py             # Framework testing and validation
-│   └── quick_start.py                # Quick start demonstration
-├── config/
-│   ├── backtest_config.json          # Backtesting configuration
-│   └── live_trading_config.json      # Live trading configuration
-├── docs/
-│   └── project_requirement.md        # Project requirements and specifications
-├── requirements_vnpy.txt             # VN.py framework dependencies
-└── README.md
-```
 
 ## Disclaimer
 

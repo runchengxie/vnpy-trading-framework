@@ -32,8 +32,8 @@ dependencies = [
     "vnpy-alpaca",
     "numpy",
     "pandas",
-    "yfinance",  # 你的 download_data.py 脚本用到了
-    "alpaca-trade-api" # 你的 download_data.py 脚本用到了
+    "yfinance",
+    "alpaca-trade-api" 
 ]
 
 # Optional dependencies for development
