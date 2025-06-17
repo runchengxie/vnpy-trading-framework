@@ -18,9 +18,22 @@ python scripts/download_data.py --batch --config config/download_config.json
 
 import sys
 import os
+from pathlib import Path
+
+# Load environment variables from .env BEFORE importing vnpy
+try:
+    from dotenv import load_dotenv
+    project_root = Path(__file__).resolve().parent.parent
+    dotenv_path = project_root / '.env'
+    if dotenv_path.exists():
+        print(f"Loading environment variables from {dotenv_path}")
+        load_dotenv(dotenv_path=dotenv_path)
+except ImportError:
+    print("python-dotenv not found, using default settings.")
+
+# Now vnpy will read the VNPY_HOME environment variable and use the local folder
 import argparse
 import json
-from pathlib import Path
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
 import pandas as pd

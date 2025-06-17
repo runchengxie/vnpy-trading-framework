@@ -18,13 +18,26 @@ vn.py框架实盘交易脚本
 
 import sys
 import os
+from pathlib import Path
+
+# Load environment variables from .env BEFORE importing vnpy
+try:
+    from dotenv import load_dotenv
+    project_root = Path(__file__).resolve().parent.parent
+    dotenv_path = project_root / '.env'
+    if dotenv_path.exists():
+        print(f"Loading environment variables from {dotenv_path}")
+        load_dotenv(dotenv_path=dotenv_path)
+except ImportError:
+    print("python-dotenv not found, using default settings.")
+
+# Now vnpy will read the VNPY_HOME environment variable and use the local folder
 import argparse
 import json
 import time
 import signal
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
-from pathlib import Path
 import threading
 from queue import Queue
 

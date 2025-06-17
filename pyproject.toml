@@ -8,16 +8,15 @@ version = "1.0.0"
 authors = [
   { name="Richard", email="xieruncheng@gmail.com" }
 ]
-description = "A collection of quantitative trading strategies for the vn.py platform, including Mean-Reversion and Trend-Following models."
+description = "A collection of quantitative trading strategies for the vn.py platform."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { file="LICENSE.txt" }
+license = { text = "MIT" }
 keywords = ["vnpy", "trading", "algorithmic-trading", "quantitative-finance", "strategy", "backtesting", "finance", "alpaca"]
 classifiers = [
-    "Development Status :: 4 - Beta", # Beta version
+    "Development Status :: 4 - Beta",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Intended Audience :: Developers",
     "Intended Audience :: Financial and Insurance Industry",
@@ -33,7 +32,8 @@ dependencies = [
     "numpy",
     "pandas",
     "yfinance",
-    "alpaca-trade-api" 
+    "alpaca-trade-api",
+    "python-dotenv"
 ]
 
 # Optional dependencies for development
@@ -50,6 +50,9 @@ Homepage = "https://github.com/your-repo/your-project"
 "Bug Tracker" = "https://github.com/your-repo/your-project/issues"
 
 # --- tools ---
+
+[tool.setuptools]
+packages = ["strategies"]
 
 [tool.black]
 # Black configurations

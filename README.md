@@ -89,8 +89,8 @@ flowchart LR
 2. **克隆本代码库**：
 
     ```bash
-    git clone <your-repository-url>
-    cd <your-repository-folder>
+    git clone <https://github.com/runchengxie/vnpy-trading-framework>
+    cd <https://github.com/runchengxie/vnpy-trading-framework>
     ```
 
 3. **安装 vn.py**：

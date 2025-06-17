@@ -30,3 +30,6 @@ trade_records/
 
 # Miscellaneous / debugging and GENERATED OUTPUT
 full_code_text.txt
+
+# Local vn.py user directory
+.vntrader_local/
