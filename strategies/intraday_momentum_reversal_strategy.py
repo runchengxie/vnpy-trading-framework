@@ -14,45 +14,47 @@ import numpy as np
 
 class IntradayMomentumReversalStrategy(CtaTemplate):
     """
-    日内动量反转策略
+    Intraday Momentum Reversal Strategy
     
-    该策略是一个日内动量反转策略，不持有隔夜仓位。核心思想是在市场出现
-    极端情绪（超买/超卖）后，等待动量衰竭的第一个信号入场，捕捉价格反转的利润。
+    This is an intraday momentum reversal strategy that does not hold overnight positions.
+    The core idea is to wait for the first signal of momentum exhaustion after the market
+    shows extreme sentiment (overbought/oversold), and then enter the market to capture
+    the profit from the price reversal.
     
-    策略逻辑：
-    1. 使用RSI(6)和KDJ(9,3,3)指标识别超买超卖状态
-    2. 在极端状态下监控动量衰竭信号
-    3. 根据当前价格相对于开盘价调整仓位大小
-    4. 严格的日内交易，不持有隔夜仓位
+    Strategy Logic:
+    1. Use RSI(6) and KDJ(9,3,3) indicators to identify overbought and oversold states.
+    2. Monitor for momentum exhaustion signals in extreme states.
+    3. Adjust position size based on the current price relative to the opening price.
+    4. Strictly intraday trading, no overnight positions are held.
     """
     
     author = "PATF Trading Framework"
     
-    # 策略参数
-    rsi_period: int = 6             # RSI周期
-    kdj_period: int = 9             # KDJ周期
-    kdj_smooth_k: int = 3           # KDJ K线平滑周期
-    kdj_smooth_d: int = 3           # KDJ D线平滑周期
-    rsi_overbought: float = 80.0    # RSI超买阈值
-    rsi_oversold: float = 20.0      # RSI超卖阈值
-    kdj_overbought: float = 100.0   # KDJ超买阈值
-    kdj_oversold: float = 0.0       # KDJ超卖阈值
-    position_size_high: float = 0.3 # 高仓位比例（30%）
-    position_size_low: float = 0.1  # 低仓位比例（10%）
+    # Strategy Parameters
+    rsi_period: int = 6             # RSI period
+    kdj_period: int = 9             # KDJ period
+    kdj_smooth_k: int = 3           # KDJ K-line smoothing period
+    kdj_smooth_d: int = 3           # KDJ D-line smoothing period
+    rsi_overbought: float = 80.0    # RSI overbought threshold
+    rsi_oversold: float = 20.0      # RSI oversold threshold
+    kdj_overbought: float = 100.0   # KDJ overbought threshold
+    kdj_oversold: float = 0.0       # KDJ oversold threshold
+    position_size_high: float = 0.3 # High position ratio (30%)
+    position_size_low: float = 0.1  # Low position ratio (10%)
     
-    # 策略变量
-    rsi_value: float = 0.0          # 当前RSI值
-    kdj_k: float = 0.0              # KDJ K值
-    kdj_d: float = 0.0              # KDJ D值
-    kdj_j: float = 0.0              # KDJ J值
-    last_rsi: float = 0.0           # 上一个RSI值
-    last_kdj_j: float = 0.0         # 上一个KDJ J值
-    open_price: float = 0.0         # 当日开盘价
-    monitoring_long: bool = False   # 做多监控状态
-    monitoring_short: bool = False  # 做空监控状态
-    current_date: str = ""          # 当前日期
+    # Strategy Variables
+    rsi_value: float = 0.0          # Current RSI value
+    kdj_k: float = 0.0              # KDJ K value
+    kdj_d: float = 0.0              # KDJ D value
+    kdj_j: float = 0.0              # KDJ J value
+    last_rsi: float = 0.0           # Previous RSI value
+    last_kdj_j: float = 0.0         # Previous KDJ J value
+    open_price: float = 0.0         # Today's open price
+    monitoring_long: bool = False   # Long monitoring status
+    monitoring_short: bool = False  # Short monitoring status
+    current_date: str = ""          # Current date
     
-    # 参数列表
+    # Parameter List
     parameters = [
         "rsi_period",
         "kdj_period",
@@ -66,7 +68,7 @@ class IntradayMomentumReversalStrategy(CtaTemplate):
         "position_size_low"
     ]
     
-    # 变量列表
+    # Variable List
     variables = [
         "rsi_value",
         "kdj_k",
@@ -79,84 +81,84 @@ class IntradayMomentumReversalStrategy(CtaTemplate):
     
     def __init__(self, cta_engine, strategy_name, vt_symbol, setting):
         """
-        构造函数
+        Constructor
         """
         super().__init__(cta_engine, strategy_name, vt_symbol, setting)
         
-        # 数组管理器，用于计算技术指标
+        # Array manager for calculating technical indicators
         self.am = ArrayManager()
         
     def on_init(self):
         """
-        策略初始化回调函数
+        Callback function for strategy initialization
         """
-        self.write_log("日内动量反转策略初始化")
+        self.write_log("Intraday Momentum Reversal Strategy initialized")
         
-        # 加载历史数据用于指标计算
+        # Load historical data for indicator calculation
         history_days = max(self.rsi_period, self.kdj_period) + 10
         self.load_bar(history_days)
         
     def on_start(self):
         """
-        策略启动回调函数
+        Callback function for strategy start
         """
-        self.write_log("日内动量反转策略启动")
+        self.write_log("Intraday Momentum Reversal Strategy started")
         
     def on_stop(self):
         """
-        策略停止回调函数
+        Callback function for strategy stop
         """
-        self.write_log("日内动量反转策略停止")
+        self.write_log("Intraday Momentum Reversal Strategy stopped")
         
     def on_tick(self, tick: TickData):
         """
-        Tick数据推送回调函数
+        Callback function for tick data push
         """
-        # 基于K线的策略，不处理tick数据
+        # Bar-based strategy, does not process tick data
         pass
         
     def on_bar(self, bar: BarData):
         """
-        K线数据推送回调函数
+        Callback function for bar data push
         """
-        # 更新数组管理器
+        # Update the array manager
         self.am.update_bar(bar)
         if not self.am.inited:
             return
             
-        # 检查是否是新的交易日
+        # Check if it is a new trading day
         current_date = bar.datetime.strftime("%Y-%m-%d")
         if current_date != self.current_date:
             self.current_date = current_date
             self.open_price = bar.open_price
-            # 新交易日开始，平掉所有仓位（日内策略）
+            # New trading day starts, close all positions (intraday strategy)
             if self.pos != 0:
                 self.close_all_positions()
-            # 重置监控状态
+            # Reset monitoring status
             self.monitoring_long = False
             self.monitoring_short = False
             
-        # 计算技术指标
+        # Calculate technical indicators
         self.calculate_indicators()
         
-        # 执行交易逻辑
+        # Execute trading logic
         self.execute_trading_logic(bar)
         
-        # 更新上一个指标值
+        # Update previous indicator values
         self.last_rsi = self.rsi_value
         self.last_kdj_j = self.kdj_j
         
-        # 同步数据到界面
+        # Synchronize data to the UI
         self.put_event()
         
     def calculate_indicators(self):
         """
-        计算技术指标
+        Calculate technical indicators
         """
-        # 计算RSI
+        # Calculate RSI
         self.rsi_value = self.am.rsi(self.rsi_period)
         
-        # 计算KDJ
+        # Calculate KDJ
         kdj_k, kdj_d = self.am.kd(self.kdj_period, self.kdj_smooth_k, self.kdj_smooth_d)
         self.kdj_k = kdj_k
         self.kdj_d = kdj_d
@@ -164,55 +166,55 @@ class IntradayMomentumReversalStrategy(CtaTemplate):
         
     def execute_trading_logic(self, bar: BarData):
         """
-        执行交易逻辑
+        Execute trading logic
         """
         current_price = bar.close_price
         
-        # 检查平仓条件
+        # Check exit conditions
         self.check_exit_conditions()
         
-        # 检查监控状态
+        # Check monitoring conditions
         self.check_monitoring_conditions()
         
-        # 执行开仓逻辑
-        if self.pos == 0:  # 无仓位时才开仓
-            # 做多信号检查
+        # Execute entry logic
+        if self.pos == 0:  # Only open positions when there is no current position
+            # Check long entry signal
             if self.monitoring_long and self.check_long_entry_signal():
                 size = self.calculate_position_size(current_price, "LONG")
                 self.buy(current_price, size)
                 self.monitoring_long = False
-                self.write_log(f"做多开仓: 价格={current_price}, 数量={size}")
+                self.write_log(f"Open long position: Price={current_price}, Size={size}")
                 
-            # 做空信号检查
+            # Check short entry signal
             elif self.monitoring_short and self.check_short_entry_signal():
                 size = self.calculate_position_size(current_price, "SHORT")
                 self.short(current_price, size)
                 self.monitoring_short = False
-                self.write_log(f"做空开仓: 价格={current_price}, 数量={size}")
+                self.write_log(f"Open short position: Price={current_price}, Size={size}")
                 
     def check_monitoring_conditions(self):
         """
-        检查进入监控状态的条件
+        Check conditions for entering monitoring state
         """
-        # 做多监控条件：RSI < 20 且 KDJ J < 0
+        # Long monitoring condition: RSI < 20 and KDJ J < 0
         if (self.rsi_value < self.rsi_oversold and 
             self.kdj_j < self.kdj_oversold and 
             not self.monitoring_long):
             self.monitoring_long = True
-            self.write_log(f"进入做多监控状态: RSI={self.rsi_value:.2f}, KDJ_J={self.kdj_j:.2f}")
+            self.write_log(f"Entering long monitoring state: RSI={self.rsi_value:.2f}, KDJ_J={self.kdj_j:.2f}")
             
-        # 做空监控条件：RSI > 80 且 KDJ J > 100
+        # Short monitoring condition: RSI > 80 and KDJ J > 100
         if (self.rsi_value > self.rsi_overbought and 
             self.kdj_j > self.kdj_overbought and 
             not self.monitoring_short):
             self.monitoring_short = True
-            self.write_log(f"进入做空监控状态: RSI={self.rsi_value:.2f}, KDJ_J={self.kdj_j:.2f}")
+            self.write_log(f"Entering short monitoring state: RSI={self.rsi_value:.2f}, KDJ_J={self.kdj_j:.2f}")
             
     def check_long_entry_signal(self) -> bool:
         """
-        检查做多入场信号
+        Check for long entry signal
         """
-        # RSI上升或KDJ J上升
+        # RSI is rising or KDJ J is rising
         rsi_rising = self.rsi_value > self.last_rsi
         kdj_j_rising = self.kdj_j > self.last_kdj_j
         
@@ -220,9 +222,9 @@ class IntradayMomentumReversalStrategy(CtaTemplate):
         
     def check_short_entry_signal(self) -> bool:
         """
-        检查做空入场信号
+        Check for short entry signal
         """
-        # RSI下降或KDJ J下降
+        # RSI is falling or KDJ J is falling
         rsi_falling = self.rsi_value < self.last_rsi
         kdj_j_falling = self.kdj_j < self.last_kdj_j
         
@@ -230,37 +232,37 @@ class IntradayMomentumReversalStrategy(CtaTemplate):
         
     def check_exit_conditions(self):
         """
-        检查平仓条件
+        Check exit conditions
         """
-        if self.pos > 0:  # 持有多头仓位
-            # 多头平仓条件：RSI > 80 或 KDJ J > 100
+        if self.pos > 0:  # Holding a long position
+            # Long exit condition: RSI > 80 or KDJ J > 100
             if (self.rsi_value > self.rsi_overbought or 
                 self.kdj_j > self.kdj_overbought):
                 self.sell(self.am.close[-1], abs(self.pos))
-                self.write_log(f"多头平仓: RSI={self.rsi_value:.2f}, KDJ_J={self.kdj_j:.2f}")
+                self.write_log(f"Closing long position: RSI={self.rsi_value:.2f}, KDJ_J={self.kdj_j:.2f}")
                 
-        elif self.pos < 0:  # 持有空头仓位
-            # 空头平仓条件：RSI < 20 或 KDJ J < 0
+        elif self.pos < 0:  # Holding a short position
+            # Short exit condition: RSI < 20 or KDJ J < 0
             if (self.rsi_value < self.rsi_oversold or 
                 self.kdj_j < self.kdj_oversold):
                 self.cover(self.am.close[-1], abs(self.pos))
-                self.write_log(f"空头平仓: RSI={self.rsi_value:.2f}, KDJ_J={self.kdj_j:.2f}")
+                self.write_log(f"Closing short position: RSI={self.rsi_value:.2f}, KDJ_J={self.kdj_j:.2f}")
                 
     def calculate_position_size(self, current_price: float, direction: str) -> int:
         """
-        计算仓位大小
+        Calculate position size
         """
-        # 获取账户资金（这里使用简化计算）
-        account_value = 100000  # 假设账户价值10万
+        # Get account funds (using a simplified calculation here)
+        account_value = 100000  # Assuming account value is 100,000
         
         if direction == "LONG":
-            # 做多：价格>=开盘价用30%，价格<开盘价用10%
+            # Long: Use 30% if price >= open price, 10% if price < open price
             if current_price >= self.open_price:
                 position_ratio = self.position_size_high
             else:
                 position_ratio = self.position_size_low
         else:  # SHORT
-            # 做空：价格>=开盘价用10%，价格<开盘价用30%
+            # Short: Use 10% if price >= open price, 30% if price < open price
             if current_price >= self.open_price:
                 position_ratio = self.position_size_low
             else:
@@ -269,11 +271,11 @@ class IntradayMomentumReversalStrategy(CtaTemplate):
         position_value = account_value * position_ratio
         size = int(position_value / current_price)
         
-        return max(size, 1)  # 至少1手
+        return max(size, 1)  # At least 1 lot/contract
         
     def close_all_positions(self):
         """
-        平掉所有仓位
+        Close all positions
         """
         if self.pos > 0:
             self.sell(self.am.close[-1], self.pos)
@@ -282,18 +284,18 @@ class IntradayMomentumReversalStrategy(CtaTemplate):
             
     def on_order(self, order: OrderData):
         """
-        委托状态更新回调函数
+        Callback function for order status update
         """
         pass
         
     def on_trade(self, trade: TradeData):
         """
-        成交数据推送回调函数
+        Callback function for trade data push
         """
         self.put_event()
         
     def on_stop_order(self, stop_order: StopOrder):
         """
-        停止单状态更新回调函数
+        Callback function for stop order status update
         """
         pass
