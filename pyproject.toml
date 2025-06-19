@@ -27,8 +27,8 @@ classifiers = [
 # Core dependencies：required to run the strategies and the scripts of this project
 dependencies = [
     "vnpy",
-    "vnpy_ctastrategy",
-    "vnpy_alpaca",
+    "vnpy-ctastrategy",
+    "vnpy-alpaca",
     "numpy",
     "pandas",
     "yfinance",
