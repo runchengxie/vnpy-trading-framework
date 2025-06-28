@@ -1,0 +1,95 @@
+{
+    "data": {
+        "symbol": "AAPL",
+        "exchange": "NASDAQ",
+        "interval": "1m",
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "data_source": "yahoo"
+    },
+    "backtest": {
+        "capital": 100000.0,
+        "commission": 0.0003,
+        "slippage": 0.0001,
+        "size": 1,
+        "pricetick": 0.01,
+        "annual_days": 252
+    },
+    "strategies": {
+        "EmaAdxStrategy": {
+            "fast_window": 10,
+            "slow_window": 20,
+            "adx_window": 14,
+            "adx_threshold": 25.0,
+            "fixed_size": 100
+        },
+        "ZScoreStrategy": {
+            "window": 20,
+            "entry_threshold": 2.0,
+            "exit_threshold": 0.5,
+            "fixed_size": 100
+        },
+        "CustomRatioStrategy": {
+            "short_period": 5,
+            "long_period": 20,
+            "ratio_upper": 1.02,
+            "ratio_lower": 0.98,
+            "exit_ratio": 1.00,
+            "fixed_size": 100
+        }
+    },
+    "optimization": {
+        "EmaAdxStrategy": {
+            "fast_window": [5, 8, 10, 12, 15],
+            "slow_window": [20, 25, 30, 35, 40],
+            "adx_threshold": [20.0, 22.5, 25.0, 27.5, 30.0]
+        },
+        "ZScoreStrategy": {
+            "window": [15, 18, 20, 22, 25],
+            "entry_threshold": [1.5, 1.8, 2.0, 2.2, 2.5],
+            "exit_threshold": [0.3, 0.4, 0.5, 0.6, 0.7]
+        },
+        "CustomRatioStrategy": {
+            "short_period": [3, 4, 5, 6, 7],
+            "long_period": [15, 18, 20, 22, 25],
+            "ratio_upper": [1.015, 1.018, 1.02, 1.022, 1.025],
+            "ratio_lower": [0.975, 0.978, 0.98, 0.982, 0.985]
+        }
+    },
+    "symbols": {
+        "US_STOCKS": [
+            "AAPL.NASDAQ",
+            "MSFT.NASDAQ",
+            "GOOGL.NASDAQ",
+            "AMZN.NASDAQ",
+            "TSLA.NASDAQ",
+            "META.NASDAQ",
+            "NVDA.NASDAQ",
+            "NFLX.NASDAQ",
+            "AMD.NASDAQ",
+            "INTC.NASDAQ"
+        ],
+        "CRYPTO": [
+            "BTCUSDT.BINANCE",
+            "ETHUSDT.BINANCE",
+            "ADAUSDT.BINANCE",
+            "DOTUSDT.BINANCE",
+            "LINKUSDT.BINANCE"
+        ]
+    },
+    "analysis": {
+        "benchmark_symbol": "SPY.NASDAQ",
+        "risk_free_rate": 0.02,
+        "output_charts": true,
+        "save_results": true,
+        "results_directory": "results",
+        "chart_directory": "charts"
+    },
+    "logging": {
+        "level": "INFO",
+        "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        "file": "logs/backtest.log",
+        "max_file_size": "10MB",
+        "backup_count": 5
+    }
+}

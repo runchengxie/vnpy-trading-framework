@@ -1,0 +1,35 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment variables
+.env
+
+# Conda/Python virtual environment
+/venv/
+/env/
+*.egg-info/
+
+# IDE / Editor specific files
+.vscode/
+.idea/
+
+# VN.py specific directories
+logs/
+results/
+data/
+*.db
+*.sqlite
+
+# Trading specific
+*.key
+*.secret
+api_keys.json
+trade_records/
+
+# Miscellaneous / debugging and GENERATED OUTPUT
+full_code_text.txt
+
+# Local vn.py user directory
+.vntrader_local/

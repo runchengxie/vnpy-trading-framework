@@ -1,0 +1,84 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vnpy-trading-framework"
+version = "1.0.0"
+authors = [
+  { name="Richard", email="xieruncheng@gmail.com" }
+]
+description = "A collection of quantitative trading strategies for the vn.py platform."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+keywords = ["vnpy", "trading", "algorithmic-trading", "quantitative-finance", "strategy", "backtesting", "finance", "alpaca"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Financial and Insurance Industry",
+    "Topic :: Office/Business :: Financial :: Investment",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+# Core dependencies：required to run the strategies and the scripts of this project
+dependencies = [
+    "vnpy",
+    "vnpy-ctastrategy",
+    "vnpy-alpaca @ git+https://github.com/vnpy/vnpy@1049acf64afd5b2d06d09b1e139dd0cca5d9d6b9#subdirectory=python/gateway/alpaca",
+    "numpy",
+    "pandas",
+    "yfinance",
+    "alpaca-trade-api",
+    "python-dotenv"
+]
+
+# Optional dependencies for development
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "black",
+    "pylint",
+    "pre-commit",
+]
+
+[project.urls]
+Homepage = "https://github.com/your-repo/your-project"  
+"Bug Tracker" = "https://github.com/your-repo/your-project/issues"
+
+# --- tools ---
+
+[tool.setuptools]
+packages = ["strategies"]
+
+[tool.black]
+# Black configurations
+line-length = 88
+target-version = ['py310']
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+)/
+'''
+
+[tool.pylint.main]
+# Pylint configurations
+disable = [
+    "C0114", # missing-module-docstring
+    "C0115", # missing-class-docstring
+    "C0116", # missing-function-docstring
+    "R0903", # too-few-public-methods
+    "R0913", # too-many-arguments
+]

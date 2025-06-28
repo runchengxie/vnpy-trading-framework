@@ -1,0 +1,26 @@
+{
+  "symbols": [
+    "SPY",
+    "QQQ",
+    "AAPL",
+    "MSFT",
+    "GOOGL",
+    "AMZN",
+    "TSLA",
+    "NVDA",
+    "META",
+    "NFLX"
+  ],
+  "start_date": "2023-01-01",
+  "end_date": "2024-12-31",
+  "source": "yahoo",
+  "interval": "1d",
+  "description": "主要ETF和科技股的日线数据下载配置",
+  "notes": [
+    "SPY: SPDR S&P 500 ETF",
+    "QQQ: Invesco QQQ Trust ETF",
+    "其他为主要科技股票",
+    "数据源使用Yahoo Finance，免费且稳定",
+    "可以根据需要修改symbols列表和时间范围"
+  ]
+}
